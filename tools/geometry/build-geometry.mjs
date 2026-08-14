@@ -17,14 +17,23 @@ const REPO = join(HERE, '..', '..');
 const CACHE_DIR = join(REPO, 'tmp', 'ne-cache');
 const OUTPUT = join(REPO, 'assets', 'geometry.json');
 
+// Data sources are pinned to specific commits so builds are reproducible.
+const MARTYNAFFORD = '0b9a6ceb0a7032713abd9460ac1e995a9c60cd1e';
+const NVKELSO = 'ca96624a56bd078437bca8184e78163e5039ad19';
+
 // Full-attribute NE 50m admin-0 (spec §3.1) — not the attribute-stripped
 // world-atlas TopoJSON. martynafford's GeoJSON ships the full property set.
 const BASE_URL =
-  'https://raw.githubusercontent.com/martynafford/natural-earth-geojson/master/50m/cultural/ne_50m_admin_0_countries.json';
+  `https://raw.githubusercontent.com/martynafford/natural-earth-geojson/${MARTYNAFFORD}/50m/cultural/ne_50m_admin_0_countries.json`;
+// 10m admin-0, source for entities NE drops at 50m (Tuvalu). Same provider as
+// the base, so the property schema matches. Only fetched if a supplement is
+// missing from the base.
+const TENM_URL =
+  `https://raw.githubusercontent.com/martynafford/natural-earth-geojson/${MARTYNAFFORD}/10m/cultural/ne_10m_admin_0_countries.json`;
 // Palestine point-of-view file (spec §2.2), only fetched if the base is merged.
 // NE's actual filename is `_pse` (the spec's `_ps` is shorthand).
 const PSE_URL =
-  'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries_pse.geojson';
+  `https://raw.githubusercontent.com/nvkelso/natural-earth-vector/${NVKELSO}/geojson/ne_10m_admin_0_countries_pse.geojson`;
 
 // Fetch with an on-disk cache under tmp/ (gitignored) so repeat builds are
 // offline and fast.
@@ -45,7 +54,10 @@ async function fetchCached(url, filename) {
 async function main() {
   const baseGeo = await fetchCached(BASE_URL, 'ne_50m_admin_0_countries.json');
   const { asset, report } = await buildAsset(baseGeo, {
-    loadPse: () => fetchCached(PSE_URL, 'ne_10m_admin_0_countries_pse.geojson'),
+    loadPse: async () =>
+      (await fetchCached(PSE_URL, 'ne_10m_admin_0_countries_pse.geojson')).features,
+    loadTenM: async () =>
+      (await fetchCached(TENM_URL, 'ne_10m_admin_0_countries.json')).features,
   });
 
   await mkdir(dirname(OUTPUT), { recursive: true });
@@ -57,6 +69,7 @@ async function main() {
       `  source features: ${report.source_features}\n` +
       `  deck entities:   ${report.deck_count}\n` +
       `  palestine:       ${report.palestine_handling} (present: ${report.palestine_present})\n` +
+      `  supplemented:    ${report.supplemented.length ? report.supplemented.join(', ') : 'none'}\n` +
       `  asset size:      ${(bytes / 1024).toFixed(0)} KiB\n`,
   );
 

@@ -13,6 +13,8 @@ import {
   mainlandCentroid,
   isPalestineMerged,
   applyPalestineSwap,
+  missingSupplements,
+  applySupplements,
   buildAsset,
 } from './lib.mjs';
 import { DECK_COUNT } from './overrides.mjs';
@@ -32,6 +34,13 @@ const ring = (cx, cy, h) => [
 ];
 const square = (cx, cy, h) => ({ type: 'Polygon', coordinates: [ring(cx, cy, h)] });
 const feature = (props, geometry) => ({ type: 'Feature', properties: props, geometry });
+
+// A clean, already-separated Israel + Palestine pair — drop into a base so the
+// Palestine guard stays on the no-swap path when a test is about something else.
+const cleanPalestine = () => [
+  feature({ ADM0_A3: 'ISR', TYPE: 'Country', NAME: 'Israel', NAME_LONG: 'Israel', LABELRANK: 4, POP_EST: 1 }, square(34.8, 31.5, 0.3)),
+  feature({ ADM0_A3: 'PSX', TYPE: 'Disputed', NAME: 'Palestine', NAME_LONG: 'Palestine', LABELRANK: 5, POP_EST: 1 }, square(35.2, 31.9, 0.2)),
+];
 
 // --- inclusion rule (§2.1) --------------------------------------------------
 test('isDeckFeature: sovereign/country/disputed/indeterminate ride in', () => {
@@ -144,6 +153,7 @@ test('buildAsset: clean source never touches the pse loader', async () => {
     ],
   };
   const { asset, report } = await buildAsset(baseGeo, {
+    supplements: [],
     loadPse: () => {
       throw new Error('loadPse must not be called for a clean source');
     },
@@ -172,9 +182,71 @@ test('buildAsset: merged source pulls Palestine from the pse loader', async () =
       square(35.2, 31.9, 0.2),
     ),
   ];
-  const { asset, report } = await buildAsset(baseGeo, { loadPse });
+  const { asset, report } = await buildAsset(baseGeo, { supplements: [], loadPse });
   assert.equal(report.palestine_handling, 'pse-swap');
   assert.ok('PSX' in asset, 'Palestine introduced by the swap');
+});
+
+// --- supplements (§2.1 always-in small states absent from 50m) --------------
+test('missingSupplements: only codes with no feature yet', () => {
+  const features = [feature({ ADM0_A3: 'FRA' }, square(0, 0, 1))];
+  assert.deepEqual(missingSupplements(features, ['TUV', 'FRA']), ['TUV']);
+});
+
+test('applySupplements: appends the named 10m entities', () => {
+  const base = [feature({ ADM0_A3: 'FRA' }, square(0, 0, 1))];
+  const tenM = [feature({ ADM0_A3: 'TUV', NAME: 'Tuvalu' }, square(179, -8, 0.1))];
+  const out = applySupplements(base, tenM, ['TUV']);
+  assert.equal(out.length, 2);
+  assert.equal(out[1].properties.ADM0_A3, 'TUV');
+});
+
+test('applySupplements: throws when a code is absent from the 10m source', () => {
+  assert.throws(() => applySupplements([], [], ['TUV']), /supplement TUV not found/);
+});
+
+test('buildAsset: pulls a missing supplement from the 10m loader', async () => {
+  const baseGeo = {
+    features: [
+      ...cleanPalestine(),
+      feature(
+        { ADM0_A3: 'FJI', TYPE: 'Sovereign country', NAME: 'Fiji', NAME_LONG: 'Fiji', LABELRANK: 4, POP_EST: 1 },
+        square(178, -17, 0.5),
+      ),
+    ],
+  };
+  const loadTenM = () => [
+    feature(
+      { ADM0_A3: 'TUV', TYPE: 'Sovereign country', NAME: 'Tuvalu', NAME_LONG: 'Tuvalu', LABELRANK: 6, POP_EST: 11052 },
+      square(179, -8, 0.1),
+    ),
+  ];
+  const { asset, report } = await buildAsset(baseGeo, {
+    supplements: ['TUV'],
+    loadTenM,
+    loadPse: () => { throw new Error('unused'); },
+  });
+  assert.deepEqual(report.supplemented, ['TUV']);
+  assert.ok('TUV' in asset, 'Tuvalu supplemented from 10m');
+  assert.equal(asset.TUV.name, 'Tuvalu');
+});
+
+test('buildAsset: a present supplement never touches the 10m loader', async () => {
+  const baseGeo = {
+    features: [
+      ...cleanPalestine(),
+      feature(
+        { ADM0_A3: 'TUV', TYPE: 'Sovereign country', NAME: 'Tuvalu', NAME_LONG: 'Tuvalu', LABELRANK: 6, POP_EST: 1 },
+        square(179, -8, 0.1),
+      ),
+    ],
+  };
+  const { report } = await buildAsset(baseGeo, {
+    supplements: ['TUV'],
+    loadTenM: () => { throw new Error('loadTenM must not run when TUV already present'); },
+    loadPse: () => { throw new Error('unused'); },
+  });
+  assert.deepEqual(report.supplemented, []);
 });
 
 // --- produced asset invariants (§ verification) ----------------------------
@@ -185,6 +257,7 @@ test('produced asset holds exactly the Deck entities', { skip: !existsSync(ASSET
   const keys = Object.keys(asset);
   assert.equal(keys.length, DECK_COUNT);
   assert.ok('PSX' in asset, 'Palestine present as its own entity');
+  assert.ok('TUV' in asset, 'Tuvalu supplemented from 10m');
   for (const [a3, e] of Object.entries(asset)) {
     assert.match(e.d, /^M/, `${a3} has a path`);
     assert.equal(e.bbox.length, 4, `${a3} bbox`);

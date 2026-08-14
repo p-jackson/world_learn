@@ -13,6 +13,7 @@ import {
   COMMON_NAME_OVERRIDES,
   INCLUDED_TYPES,
   PALESTINE_PROBES,
+  SUPPLEMENT_CODES,
 } from './overrides.mjs';
 
 // Equirectangular (Plate Carrée) tuned so projected x == lon and y == -lat
@@ -136,11 +137,32 @@ export function applyPalestineSwap(baseFeatures, pseFeatures) {
   return result;
 }
 
+// Which of `codes` have no feature in `features` yet.
+export function missingSupplements(features, codes) {
+  const present = new Set(features.map((f) => f.properties.ADM0_A3));
+  return codes.filter((code) => !present.has(code));
+}
+
+// Append the named entities, sourced from the 10m features, to the base set
+// (spec §2.1 always-in). Attributes come straight from 10m — these entities are
+// absent from 50m, so there is nothing to preserve. Returns a new array.
+export function applySupplements(baseFeatures, tenMFeatures, codes) {
+  const add = codes.map((code) => {
+    const f = byAdm0A3(tenMFeatures, code);
+    if (!f) throw new Error(`supplement ${code} not found in 10m source`);
+    return f;
+  });
+  return [...baseFeatures, ...add];
+}
+
 // Full pipeline over already-loaded GeoJSON. `loadPse` is an optional async
 // thunk returning the pse point-of-view features; it is only awaited when the
 // base source actually folds Palestine into Israel, so the clean 50m case never
 // pays for (or mixes in) the 10m file. Returns { asset, report }.
-export async function buildAsset(baseGeo, { loadPse } = {}) {
+export async function buildAsset(
+  baseGeo,
+  { loadPse, loadTenM, supplements = SUPPLEMENT_CODES } = {},
+) {
   let features = baseGeo.features;
 
   let palestineHandling = 'source-already-separated';
@@ -152,6 +174,16 @@ export async function buildAsset(baseGeo, { loadPse } = {}) {
     }
     features = applyPalestineSwap(features, await loadPse());
     palestineHandling = 'pse-swap';
+  }
+
+  const supplemented = missingSupplements(features, supplements);
+  if (supplemented.length) {
+    if (!loadTenM) {
+      throw new Error(
+        `entities absent from 50m need the 10m source: ${supplemented.join(', ')}`,
+      );
+    }
+    features = applySupplements(features, await loadTenM(), supplemented);
   }
 
   const deck = features.filter((f) => isDeckFeature(f.properties));
@@ -169,6 +201,7 @@ export async function buildAsset(baseGeo, { loadPse } = {}) {
       deck_count: Object.keys(asset).length,
       palestine_handling: palestineHandling,
       palestine_present: 'PSX' in asset,
+      supplemented,
     },
   };
 }

@@ -1,6 +1,14 @@
-// Expected Deck size (spec §2.1): the inclusion rule over NE 50m yields exactly
-// this many entities. The build guard and the tests both assert against it.
-export const DECK_COUNT = 239;
+// Expected Deck size: the 239 the inclusion rule yields over NE 50m (spec §2.1),
+// plus the entities supplemented from 10m (below). The build guard and the tests
+// both assert against it.
+export const DECK_COUNT = 240;
+
+// Sovereign entities the spec requires (§2.1 "always in regardless of size") that
+// NE drops at 50m for being too small. They're pulled from the 10m source and
+// injected before the inclusion rule runs. Tuvalu (26 km²) is the only one; it
+// has no land neighbours, so 10m geometry introduces no border seam with 50m.
+// Rendering something this tiny is a later concern (min-span framing, §4.2).
+export const SUPPLEMENT_CODES = ['TUV'];
 
 // Curated common-name overrides (spec §2.3).
 //

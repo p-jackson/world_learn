@@ -15,3 +15,20 @@ Source spec: `.scratch/mvp-spec/spec.md` §2, §3.
 - [x] Projected coordinates rounded (~2 dp) to shrink the asset
 - [x] Output is `include_str!`-loadable JSON (or generated `.rs`)
 - [x] Verified: exactly 239 keys; Palestine present as its own entity; antimeridian entities (RUS, FJI, USA/Alaska) are cut correctly, not globe-wrapped
+
+## Comments
+
+**Implemented.** `tools/geometry/` → `assets/geometry.json`. Two data-reality
+notes (see `tools/geometry/README.md`):
+
+- **Deck = 240, not 239.** Rule over 50m yields 239; **Tuvalu** is absent from
+  50m (too small) and supplemented from 10m per product call → 240. `DECK_COUNT`
+  is the single source of that number.
+- **Palestine swap not run.** The 50m source already separates Palestine from
+  Israel (Israel excludes West Bank/Gaza, verified by point-in-polygon), so the
+  guarded `pse` swap correctly no-ops. Kept as fallback.
+
+Sources pinned to commits for reproducibility. `centroid` = mainland-polygon
+centroid (keeps the reveal pin inside the framed view).
+
+Follow-up: `spec.md`/`CONTEXT.md` still say 239 — update to 240 when convenient.

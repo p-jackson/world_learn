@@ -44,6 +44,15 @@ ocean-spanning box (§4.2). The `d` path is the whole feature, cut at ±180 by
 d3-geo's antimeridian clipping (RUS/USA/FJI render as pieces per side, not a
 globe-wrapping line).
 
+Data sources are **pinned to specific commits** (`MARTYNAFFORD` / `NVKELSO` in
+`build-geometry.mjs`) so a rebuild is reproducible.
+
+## Deck size: 240, not the spec's 239
+
+The inclusion rule over NE 50m yields **239**; **Tuvalu is supplemented from 10m
+to make 240** (see below). `DECK_COUNT` in `overrides.mjs` is the single source
+of that number, asserted by both the build guard and the tests.
+
 ## Two places data reality diverges from the spec's assumptions
 
 Both are logged by the build and covered by tests — flagged here so they aren't
@@ -59,16 +68,20 @@ mistaken for bugs.
   and swaps `ISR`+`PSX` in. `palestine_handling` in the build report records
   which path ran (`source-already-separated` here).
 
-- **Tuvalu.** The spec names Tuvalu as an always-in small state, but the 50m NE
-  source has **no Tuvalu feature at all** (too small at 50m). The inclusion rule
-  still yields exactly 239, so this changes the membership the author imagined,
-  not the count. Adding Tuvalu from 10m would make it 240 and break the 239
-  invariant, so it stays out.
+- **Tuvalu.** The spec names Tuvalu as an always-in small state (§2.1), but the
+  50m NE source has **no Tuvalu feature at all** (too small at 50m). It is
+  **supplemented from the 10m source** (`SUPPLEMENT_CODES` in `overrides.mjs`),
+  making the deck 240. Tuvalu has no land neighbours, so 10m geometry introduces
+  no border seam with 50m. Same guarded pattern as Palestine: the 10m file is
+  only fetched when a required code is actually missing. Rendering something this
+  tiny is a later concern (min-span framing, §4.2). `supplemented` in the build
+  report lists what was pulled (`TUV` here).
 
 ## Files
 
 - `build-geometry.mjs` — CLI: fetch (cached) → build → write, with guardrails.
 - `lib.mjs` — pure transforms (inclusion rule, names, mainland bbox/centroid,
-  Palestine guard/swap, `buildAsset`). Where the tests live.
-- `overrides.mjs` — curated common-name table + rule constants.
+  Palestine guard/swap, 10m supplements, `buildAsset`). Where the tests live.
+- `overrides.mjs` — curated common-name table + rule constants (`DECK_COUNT`,
+  `SUPPLEMENT_CODES`).
 - `build-geometry.test.mjs` — unit tests + invariants on the produced asset.
