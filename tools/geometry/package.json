@@ -1,0 +1,14 @@
+{
+  "name": "world-learn-geometry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only build step: Natural Earth admin-0 -> static geometry asset (assets/geometry.json). Never ships in the app.",
+  "scripts": {
+    "build": "node build-geometry.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "d3-geo": "^3.1.1"
+  }
+}
