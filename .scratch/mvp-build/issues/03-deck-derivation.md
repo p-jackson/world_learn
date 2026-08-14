@@ -1,0 +1,12 @@
+# 03 — Deck derivation + intro order
+
+**What to build:** The in-memory Deck the rest of the app iterates. It loads the static geometry asset and exposes the 239 Cards in the fixed big→obscure introduction order, so new Cards always enter the same way and every screen shares one ordering. Pure Rust, no UI.
+
+Source spec: `.scratch/mvp-spec/spec.md` §2.4, §5.2.
+
+**Blocked by:** 01 (geometry asset).
+
+- [ ] Loads the asset via `include_str!` + `serde_json` into a typed Entity/Card structure keyed by `ADM0_A3`
+- [ ] Deck ordered by `LABELRANK` ascending, tiebreak `POP_EST` descending — the fixed new-Card intro sequence
+- [ ] Deck membership + order derived at runtime from the asset only; nothing persisted (§5.2)
+- [ ] Unit tests: count = 239; contested entities land mid-to-late (Taiwan LR 3; Palestine/Somaliland 5; Kosovo/N. Cyprus 6; W. Sahara 7); a famous-small nation (e.g. Vatican/Nauru) is not buried at the tail as a pure-population sort would do

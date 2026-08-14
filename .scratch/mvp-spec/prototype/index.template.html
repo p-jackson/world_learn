@@ -1,0 +1,344 @@
+<!doctype html>
+<!--
+  PROTOTYPE — THROWAWAY. Wayfinder ticket 04 (review-loop & screen interaction spec).
+  NOT production. Answers: how should the review screen look & feel across 3 screens?
+  Three radically-different variants of the REVIEW screen, switch with ?variant=A|B|C,
+  the floating bottom bar, or ←/→. Home + Settings + Done are shared shell.
+  Geometry: real NE 110m, d3-geo equirectangular (same pipeline as ticket 03), inlined.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Wayfinder review-loop prototype</title>
+<style>
+  :root{
+    --ocean:#0f1720; --land:#26323f; --land-edge:#55697f; --target:#f5b301;
+    --target-edge:#ffd968; --ink:#eef3f8; --ink-dim:#9fb0c0; --panel:#151f2a;
+    --panel-2:#1c2937; --line:#2a3a4a; --accent:#4c9aff;
+    --again:#ef5a5a; --hard:#e8923c; --good:#43b968; --easy:#4c9aff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:#000; color:var(--ink); font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex; justify-content:center; overscroll-behavior:none;
+  }
+  #app{
+    position:relative; width:100%; max-width:430px; height:100dvh; background:var(--ocean);
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  button{font:inherit; color:inherit; border:0; background:none; cursor:pointer}
+  .muted{color:var(--ink-dim)}
+  .screen{position:absolute; inset:0; display:flex; flex-direction:column}
+  .hidden{display:none !important}
+
+  /* ---- map ---- */
+  .map-wrap{position:relative; background:var(--ocean); overflow:hidden}
+  svg.map{width:100%; height:100%; display:block}
+  /* boundary lines always visible (non-scaling so they stay crisp at any zoom) */
+  svg.map path{fill:var(--land); stroke:var(--land-edge); stroke-width:1; vector-effect:non-scaling-stroke; stroke-linejoin:round}
+  svg.map path.target{fill:var(--target); stroke:var(--target-edge); stroke-width:1.6}
+  .pin{position:absolute; transform:translate(-50%,-100%); font-size:26px; filter:drop-shadow(0 2px 3px #000a);
+    animation:drop .35s cubic-bezier(.2,1.3,.4,1)}
+  @keyframes drop{from{transform:translate(-50%,-160%);opacity:0}to{transform:translate(-50%,-100%);opacity:1}}
+
+  /* ---- shared bits ---- */
+  .statusbar{display:flex; align-items:center; gap:14px; padding:14px 18px; font-size:13px; letter-spacing:.02em}
+  .statusbar .count{display:flex; align-items:center; gap:5px}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .progress{flex:1; height:4px; border-radius:2px; background:#ffffff1a; overflow:hidden}
+  .progress > i{display:block; height:100%; background:var(--accent); transition:width .3s}
+  .grade{font-weight:600}
+  .grade small{display:block; font-weight:400; opacity:.85; font-size:11px; margin-top:2px}
+  .btn-primary{background:var(--accent); color:#04121f; font-weight:650; border-radius:14px; padding:16px; width:100%; font-size:17px}
+  .g-again{background:var(--again)} .g-hard{background:var(--hard)} .g-good{background:var(--good)} .g-easy{background:var(--easy)}
+  .g-again,.g-hard,.g-good,.g-easy{color:#0a0f14}
+
+  /* ---- HOME ---- */
+  .home-screen{padding:0; justify-content:space-between}
+  .home-top{padding:64px 26px 0}
+  .home-title{font-size:26px; font-weight:700; letter-spacing:-.01em}
+  .home-sub{margin-top:6px; color:var(--ink-dim)}
+  .home-stats{display:flex; gap:14px; padding:30px 26px}
+  .stat{flex:1; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px}
+  .stat b{font-size:30px; font-weight:750; display:block}
+  .stat span{color:var(--ink-dim); font-size:13px}
+  .home-actions{padding:22px 26px calc(70px + env(safe-area-inset-bottom))}
+  .link{padding:14px; text-align:center; color:var(--ink-dim); width:100%}
+
+  /* ---- SETTINGS ---- */
+  .settings-screen{padding:0}
+  .nav{display:flex; align-items:center; gap:8px; padding:16px 14px; font-weight:600}
+  .row{display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-top:1px solid var(--line)}
+  .stepper{display:flex; align-items:center; gap:0; background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden}
+  .stepper button{padding:10px 18px; font-size:20px; font-weight:600}
+  .stepper b{padding:0 16px; min-width:44px; text-align:center}
+
+  /* ---- DONE ---- */
+  .done-screen{align-items:center; justify-content:center; text-align:center; padding:40px}
+  .done-screen .big{font-size:56px}
+  .done-screen h2{margin:18px 0 6px; font-size:24px}
+
+  /* ===== VARIANT A — immersive full-bleed ===== */
+  .A .map-wrap{flex:1}
+  .A .statusbar{position:absolute; top:0; left:0; right:0; z-index:3;
+    background:linear-gradient(#000a,transparent); padding-top:calc(14px + env(safe-area-inset-top))}
+  .A .a-bottom{position:absolute; left:0; right:0; bottom:0; z-index:3; padding:20px 18px calc(66px + env(safe-area-inset-bottom));
+    background:linear-gradient(transparent,#000c 28%)}
+  .A .a-name{text-align:center; font-size:32px; font-weight:750; letter-spacing:-.01em; text-shadow:0 2px 10px #000}
+  .A .a-formal{text-align:center; color:#dfe8f0; font-size:14px; margin:2px 0 16px; text-shadow:0 1px 6px #000}
+  /* vertical stack: all four reachable by either thumb (user feedback) */
+  .A .a-grades{display:flex; flex-direction:column; gap:9px}
+  .A .a-grades button{border-radius:14px; padding:15px 18px; text-align:left; font-size:16px; font-weight:650}
+  .A .reveal-pill{width:74%; margin:0 auto; display:block; background:#ffffffef; color:#0a0f14; font-weight:700;
+    border-radius:16px; padding:16px; font-size:17px; box-shadow:0 6px 24px #0007}
+
+  /* ===== VARIANT B — bottom sheet ===== */
+  .B .map-wrap{height:56%; margin:12px 12px 0; border-radius:20px}
+  .B .statusbar{order:-1}
+  .B .sheet{flex:1; background:var(--panel); margin-top:14px; border-radius:24px 24px 0 0; border-top:1px solid var(--line);
+    padding:22px 20px calc(62px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; box-shadow:0 -8px 30px #0006}
+  .B .sheet-prompt{color:var(--ink-dim); font-size:14px; letter-spacing:.04em; text-transform:uppercase}
+  .B .b-name{font-size:32px; font-weight:750; margin-top:6px; letter-spacing:-.01em}
+  .B .b-formal{color:var(--ink-dim); margin-top:2px}
+  .B .b-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:auto}
+  .B .b-grid button{border-radius:14px; padding:16px; text-align:left}
+  .B .spacer{flex:1}
+
+  /* ===== VARIANT C — info-forward rail ===== */
+  .C .map-wrap{height:44%}
+  .C .c-body{flex:1; padding:16px 18px calc(60px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; overflow:auto}
+  .C .c-name{font-size:26px; font-weight:750}
+  .C .c-context{margin:10px 0 4px; display:flex; flex-wrap:wrap; gap:6px}
+  .C .chip{background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:5px 11px; font-size:12px; color:var(--ink-dim)}
+  .C .c-grades{display:flex; flex-direction:column; gap:9px; margin-top:16px}
+  .C .c-grades button{display:flex; align-items:center; gap:14px; border-radius:14px; padding:14px 16px; text-align:left}
+  .C .c-grades .iv{font-weight:750; font-size:15px; min-width:52px}
+  .C .c-grades .lbl b{font-size:15px} .C .c-grades .lbl span{display:block; font-size:12px; opacity:.8}
+  .C .c-reveal{margin-top:auto}
+
+  /* ---- floating variant switcher ---- */
+  #switch{position:fixed; bottom:12px; left:50%; transform:translateX(-50%); z-index:99;
+    display:flex; align-items:center; gap:2px; background:#000d; border:1px solid #ffffff33;
+    border-radius:999px; padding:5px; backdrop-filter:blur(8px); box-shadow:0 6px 20px #0009; font-size:13px}
+  #switch button{padding:7px 12px; border-radius:999px}
+  #switch .lbl{padding:0 10px; font-weight:600; white-space:nowrap; min-width:150px; text-align:center}
+  #switch button:active{background:#ffffff22}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="switch">
+  <button id="prev" aria-label="previous">◀</button>
+  <span class="lbl" id="vlabel"></span>
+  <button id="next" aria-label="next">▶</button>
+</div>
+
+<script id="geo" type="application/json">__GEO__</script>
+<script>
+const GEO = JSON.parse(document.getElementById('geo').textContent);
+const byName = Object.fromEntries(GEO.map(f => [f.name, f]));
+
+// ---- curated review queue: big -> obscure, incl. contested (ticket premise) ----
+const QUEUE_NAMES = ["France","Brazil","Japan","Egypt","Kosovo","Nepal","Taiwan",
+  "W. Sahara","Bhutan","Eswatini","Djibouti"];
+const FORMAL = {France:"French Republic", Brazil:"Federative Republic of Brazil",
+  Japan:"Japan", Egypt:"Arab Republic of Egypt", Kosovo:"Republic of Kosovo (disputed)",
+  Nepal:"Federal Democratic Republic of Nepal", Taiwan:"Taiwan (disputed)",
+  "W. Sahara":"Western Sahara (disputed)", Bhutan:"Kingdom of Bhutan",
+  Eswatini:"Kingdom of Eswatini", Djibouti:"Republic of Djibouti"};
+const queue = QUEUE_NAMES.filter(n => byName[n]);
+
+const VARIANTS = {A:"Immersive + stacked ★", B:"Bottom sheet", C:"Info rail"};
+let variant = (new URLSearchParams(location.search).get('variant') || 'A').toUpperCase();
+if(!VARIANTS[variant]) variant='A';
+
+let state = {screen:'home', idx:0, revealed:false, done:0, newLeft:7, dueLeft:11, perDay:10};
+
+// ---- regional zoom: viewBox from target bbox * padding, per-card cos(lat) correction ----
+const PAD = 3.4;
+function frameFor(f){
+  const [x0,y0,x1,y1] = f.bbox;
+  const latMid = -((y0+y1)/2);
+  const cos = Math.max(.25, Math.cos(latMid*Math.PI/180));
+  const cx = ((x0+x1)/2)*cos, cy = (y0+y1)/2;
+  const wc = (x1-x0)*cos, h = (y1-y0);
+  const side = Math.max(wc, h, 6) * PAD;            // min span so specks aren't over-zoomed
+  return {cos, viewBox:`${cx-side/2} ${cy-side/2} ${side} ${side}`, cx, cy};
+}
+function mapSVG(target){
+  const paths = GEO.map(f =>
+    `<path class="${f===target?'target':''}" d="${f.d}"/>`).join('');
+  const fr = frameFor(target);
+  return {html:`<svg class="map" viewBox="${fr.viewBox}" preserveAspectRatio="xMidYMid meet">
+      <g transform="scale(${fr.cos.toFixed(4)},1)">${paths}</g></svg>`, fr};
+}
+// screen px of the target centroid (for the dropped pin in variant A)
+function pinStyle(fr, wrapEl){
+  const r = wrapEl.getBoundingClientRect();
+  const [vx,vy,vw,vh] = fr.viewBox.split(' ').map(Number);
+  const s = Math.min(r.width/vw, r.height/vh);       // meet scale
+  const ox = (r.width - vw*s)/2, oy = (r.height - vh*s)/2;
+  const px = ox + (fr.cx - vx)*s, py = oy + (fr.cy - vy)*s;
+  return `left:${px}px; top:${py}px`;
+}
+
+// fake FSRS-ish interval previews (prototype only) — feel, not real scheduling
+const IV = {again:"<1m", hard:"2d", good:"4d", easy:"9d"};
+const NEIGHBORS = {France:["Spain","Germany","Italy","Belgium"], Brazil:["Argentina","Peru","Colombia","Bolivia"],
+  Japan:["(island — Korea, China nearby)"], Egypt:["Libya","Sudan","Israel"], Kosovo:["Serbia","Albania","N. Macedonia","Montenegro"],
+  Nepal:["India","China"], Taiwan:["(island — off SE China)"], "W. Sahara":["Morocco","Mauritania","Algeria"],
+  Bhutan:["India","China"], Eswatini:["South Africa","Mozambique"], Djibouti:["Ethiopia","Eritrea","Somalia"]};
+
+// ---------- render ----------
+const app = document.getElementById('app');
+function render(){
+  document.getElementById('vlabel').textContent = `${variant} — ${VARIANTS[variant]}`;
+  if(state.screen==='home') return renderHome();
+  if(state.screen==='settings') return renderSettings();
+  if(state.screen==='done') return renderDone();
+  return renderReview();
+}
+function shell(inner, cls=''){ app.className=variant; app.innerHTML = `<div class="screen ${cls}">${inner}</div>`; }
+
+function renderHome(){
+  shell(`
+    <div class="home-top">
+      <div class="home-title">Wayfinder</div>
+      <div class="home-sub">Know where every place is.</div>
+    </div>
+    <div class="home-stats">
+      <div class="stat"><b>${state.dueLeft}</b><span>reviews due</span></div>
+      <div class="stat"><b>${state.newLeft}</b><span>new today</span></div>
+    </div>
+    <div class="home-actions">
+      <button class="btn-primary" id="start">Start${state.dueLeft+state.newLeft?` · ${state.dueLeft+state.newLeft} cards`:''}</button>
+      <button class="link" id="toSettings">Settings</button>
+    </div>`, 'home-screen');
+  app.querySelector('#start').onclick = ()=>{ if(!queue.length) return; state.screen='review'; state.idx=0; state.revealed=false; render(); };
+  app.querySelector('#toSettings').onclick = ()=>{ state.screen='settings'; render(); };
+}
+
+function renderSettings(){
+  shell(`
+    <div class="nav"><button id="back">‹ Back</button> Settings</div>
+    <div class="row"><div><b>New cards / day</b><div class="muted" style="font-size:13px">Introduced big → obscure</div></div>
+      <div class="stepper"><button id="minus">−</button><b>${state.perDay}</b><button id="plus">+</button></div></div>
+    <div class="row"><div><b>Scheduler</b><div class="muted" style="font-size:13px">FSRS (Again / Hard / Good / Easy)</div></div><span class="muted">FSRS</span></div>
+    <div class="row"><div><b>Deck</b><div class="muted" style="font-size:13px">All entities incl. contested</div></div><span class="muted">~250</span></div>`, 'settings-screen');
+  app.querySelector('#back').onclick=()=>{state.screen='home';render();};
+  app.querySelector('#minus').onclick=()=>{state.perDay=Math.max(0,state.perDay-5);render();};
+  app.querySelector('#plus').onclick=()=>{state.perDay=Math.min(50,state.perDay+5);render();};
+}
+
+function renderDone(){
+  shell(`<div class="big">✓</div><h2>Done for today</h2>
+    <p class="muted">${state.done} reviewed. Next batch unlocks tomorrow.</p>
+    <div style="height:20px"></div>
+    <button class="btn-primary" style="max-width:200px" id="home2">Back to home</button>`, 'done-screen');
+  app.querySelector('#home2').onclick=()=>{state.screen='home';state.dueLeft=0;state.newLeft=0;render();};
+}
+
+function grade(){ // advance queue
+  state.done++;
+  if(state.idx+1 >= queue.length){ state.screen='done'; }
+  else { state.idx++; state.revealed=false; }
+  render();
+}
+function reveal(){ state.revealed=true; render(); }
+
+function statusbar(){
+  const pct = Math.round(state.idx/queue.length*100);
+  return `<div class="statusbar">
+    <span class="count"><span class="dot" style="background:var(--accent)"></span>${queue.length-state.idx} left</span>
+    <div class="progress"><i style="width:${pct}%"></i></div>
+    <span class="muted">${state.idx+1}/${queue.length}</span></div>`;
+}
+
+function renderReview(){
+  const f = byName[queue[state.idx]];
+  const {html:svg, fr} = mapSVG(f);
+  const R = state.revealed;
+  if(variant==='A') reviewA(f,svg,fr,R);
+  else if(variant==='B') reviewB(f,svg,R);
+  else reviewC(f,svg,R);
+}
+
+function reviewA(f,svg,fr,R){
+  shell(`${statusbar()}
+    <div class="map-wrap" id="mw">${svg}</div>
+    <div class="a-bottom">
+      ${R?`<div class="a-name">${f.name}</div>
+        <div class="a-formal">${FORMAL[f.name]||''}</div>
+        <div class="a-grades">
+          <button class="g-again">Again</button>
+          <button class="g-hard">Hard</button>
+          <button class="g-good">Good</button>
+          <button class="g-easy">Easy</button></div>`
+       :`<button class="reveal-pill" id="rev">Tap to reveal</button>`}
+    </div>`, 'A-review');
+  if(!R){ app.querySelector('#rev').onclick=reveal; app.querySelector('#mw').onclick=reveal; }
+  else { app.querySelectorAll('.a-grades button').forEach(b=>b.onclick=grade);
+    // drop a pin on the target
+    const mw=app.querySelector('#mw'); const pin=document.createElement('div');
+    pin.className='pin'; pin.textContent='📍'; pin.style.cssText=pinStyle(fr,mw); mw.appendChild(pin); }
+}
+
+function reviewB(f,svg,R){
+  shell(`${statusbar()}
+    <div class="map-wrap" id="mw">${svg}</div>
+    <div class="sheet">
+      ${R?`<div class="sheet-prompt">Answer</div>
+        <div class="b-name">${f.name}</div><div class="b-formal">${FORMAL[f.name]||''}</div>
+        <div class="b-grid">
+          <button class="g-again"><div class="grade">Again<small>${IV.again}</small></div></button>
+          <button class="g-hard"><div class="grade">Hard<small>${IV.hard}</small></div></button>
+          <button class="g-good"><div class="grade">Good<small>${IV.good}</small></div></button>
+          <button class="g-easy"><div class="grade">Easy<small>${IV.easy}</small></div></button></div>`
+       :`<div class="sheet-prompt">Locate &amp; name</div>
+         <div class="b-name">Where is this?</div><div class="b-formal">Recall it, then reveal.</div>
+         <div class="spacer"></div>
+         <button class="btn-primary" id="rev">Reveal answer</button>`}
+    </div>`, 'B-review');
+  if(!R) app.querySelector('#rev').onclick=reveal;
+  else app.querySelectorAll('.b-grid button').forEach(b=>b.onclick=grade);
+}
+
+function reviewC(f,svg,R){
+  const nb = (NEIGHBORS[f.name]||[]).map(n=>`<span class="chip">${n}</span>`).join('');
+  shell(`${statusbar()}
+    <div class="map-wrap" id="mw">${svg}</div>
+    <div class="c-body">
+      ${R?`<div class="c-name">${f.name}</div>
+        <div class="muted" style="font-size:13px;margin-top:2px">${FORMAL[f.name]||''}</div>
+        <div class="muted" style="font-size:12px;margin-top:12px">Borders / nearby</div>
+        <div class="c-context">${nb}</div>
+        <div class="c-grades">
+          <button class="g-again"><span class="iv">${IV.again}</span><span class="lbl"><b>Again</b><span>Forgot / wrong</span></span></button>
+          <button class="g-hard"><span class="iv">${IV.hard}</span><span class="lbl"><b>Hard</b><span>Right, struggled</span></span></button>
+          <button class="g-good"><span class="iv">${IV.good}</span><span class="lbl"><b>Good</b><span>Right, some effort</span></span></button>
+          <button class="g-easy"><span class="iv">${IV.easy}</span><span class="lbl"><b>Easy</b><span>Instant</span></span></button></div>`
+       :`<div class="c-name muted">Where is this?</div>
+         <div class="muted" style="font-size:13px;margin-top:6px">Recall the name, then reveal to grade &amp; see context.</div>
+         <div class="c-reveal"><button class="btn-primary" id="rev">Reveal answer</button></div>`}
+    </div>`, 'C-review');
+  if(!R) app.querySelector('#rev').onclick=reveal;
+  else app.querySelectorAll('.c-grades button').forEach(b=>b.onclick=grade);
+}
+
+// ---- switcher ----
+function setVariant(v){ variant=v; const u=new URL(location); u.searchParams.set('variant',v); history.replaceState(0,'',u); render(); }
+const order=['A','B','C'];
+document.getElementById('prev').onclick=()=>setVariant(order[(order.indexOf(variant)+2)%3]);
+document.getElementById('next').onclick=()=>setVariant(order[(order.indexOf(variant)+1)%3]);
+addEventListener('keydown',e=>{
+  if(/input|textarea/i.test(e.target.tagName)) return;
+  if(e.key==='ArrowLeft') document.getElementById('prev').click();
+  if(e.key==='ArrowRight') document.getElementById('next').click();
+});
+render();
+</script>
+</body>
+</html>
