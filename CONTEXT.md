@@ -9,9 +9,9 @@ implementation detail.
 
 The guessable unit: one feature on the world map — a sovereign state, a
 dependency, or a disputed territory. Drawn from Natural Earth admin-0; the MVP
-Deck is the **239** that are inhabited (every sovereign state and contested
+Deck is the **240** that are inhabited (every sovereign state and contested
 territory, plus dependencies that have residents — only the uninhabited
-dependency specks are left out). Deliberately broader than "country": contested
+dependency specks are left out; Tuvalu, too small for NE 50m, is sourced from 10m). Deliberately broader than "country": contested
 and dependent territories are in, on purpose. Prefer **Entity** over "country"
 or "territory" when the distinction matters.
 

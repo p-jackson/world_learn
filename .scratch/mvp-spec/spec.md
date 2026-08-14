@@ -30,7 +30,7 @@ done-for-today end state. Nothing more — no accounts, no onboarding, no stats.
 - **Self-reveal recall**: mental guess → tap → reveal → grade. **4-button** FSRS
   grades (Again/Hard/Good/Easy).
 - **Regional zoom**, medium framing, fixed frame per Card.
-- Scope = inhabited Natural Earth admin-0 features **incl. contested** — **239
+- Scope = inhabited Natural Earth admin-0 features **incl. contested** — **240
   Cards** (see §2).
 - **FSRS** scheduler (`fsrs` crate v6+); SM-2 was the fallback, not needed.
 - New-Cards/day cap (configurable, default 10), fixed intro order big→obscure.
@@ -42,11 +42,11 @@ done-for-today end state. Nothing more — no accounts, no onboarding, no stats.
 ## 2. The Deck — Entity set & derivation rules
 
 Derived from Natural Earth **50m admin-0** (241 features) by rule — never a
-hand-typed 239-row list. Every Entity is keyed on **`ADM0_A3`** (populated and
+hand-typed 240-row list. Every Entity is keyed on **`ADM0_A3`** (populated and
 unique for every feature incl. disputed ones; **never `ISO_A3`**, which is `-99`
 for France/Norway/many disputed entities).
 
-### 2.1 Inclusion rule → 239 Cards
+### 2.1 Inclusion rule → 240 Cards
 
 **Include every feature EXCEPT uninhabited dependencies:**
 
@@ -58,12 +58,15 @@ for France/Norway/many disputed entities).
 - **PLUS** `TYPE = Dependency AND POP_EST > 0` → **28** of the 30 dependencies.
 - **Drop only** the two `POP_EST = 0` dependencies: **Heard I. & McDonald Is.**
   and **Ashmore & Cartier Is.**
+- **PLUS Tuvalu**, a sovereign state NE omits from 50m for being too small
+  (26 km²) — supplemented from the **10m** source (§3.3). It has no land
+  neighbours, so 10m geometry seams with nothing.
 
-Total = **211 + 28 = 239 Cards.** Criterion is **inhabited**, not "big enough
-to locate" — tiny-but-inhabited entities (Niue, Anguilla, Pitcairn, Bermuda)
-are in. `POP_EST > 0` is a single data-derived rule, no curated allow/deny list.
-Small sovereign states (Vatican, Nauru, Tuvalu) are always in regardless of
-size. No area field exists in NE; inclusion needs none.
+Total = **211 + 28 from 50m + Tuvalu = 240 Cards.** Criterion is **inhabited**,
+not "big enough to locate" — tiny-but-inhabited entities (Niue, Anguilla,
+Pitcairn, Bermuda) are in. `POP_EST > 0` is a single data-derived rule, no
+curated allow/deny list. Small sovereign states (Vatican, Nauru, Tuvalu) are
+always in regardless of size. No area field exists in NE; inclusion needs none.
 
 ### 2.2 Palestine patch
 
@@ -82,7 +85,7 @@ Reveal shows **curated common name (primary) + `NAME_LONG` (formal, secondary)**
   override table (~15–25 entries)** fixing NE abbreviations to natural forms:
   `W. Sahara`→Western Sahara, `Dem. Rep. Congo`→DR Congo, `N. Cyprus`→Northern
   Cyprus, `Bosnia and Herz.`→Bosnia & Herzegovina, etc.
-- Rules + overrides, never a hand-typed 239-row list.
+- Rules + overrides, never a hand-typed 240-row list.
 - Grading is self-assessed, so the displayed string never gates correctness — it
   only has to read naturally.
 
@@ -114,7 +117,7 @@ asset keyed by `ADM0_A3`.**
   numeric id + `name` — we need `ADM0_A3`, `TYPE`, `POP_EST`, `LABELRANK`,
   `NAME`, `NAME_LONG`).
 - Round projected coordinates at build time (~2 decimal places) to shrink the
-  shipped asset. ~239 paths is well within the render budget.
+  shipped asset. ~240 paths is well within the render budget.
 
 ### 3.2 Projection
 
@@ -131,14 +134,17 @@ vertical exaggeration hurts).
 A small **d3-geo Node script** (dev-only, never ships):
 
 1. Fetch NE 50m (full attributes) → `topojson.feature`.
-2. Apply the Palestine `ps`-file swap (§2.2).
-3. Filter to the 239 Deck features (§2.1).
-4. Per feature: `d3.geoBounds` + `d3.geoPath(geoEquirectangular)` →
+2. Apply the Palestine `ps`-file swap (§2.2) — guarded: only if the source
+   folds Palestine into Israel (martynafford's 50m already separates them, so it
+   no-ops in practice).
+3. Supplement Tuvalu from 10m (§2.1) — guarded: only if absent from the base.
+4. Filter to the 240 Deck features (§2.1).
+5. Per feature: `d3.geoBounds` + `d3.geoPath(geoEquirectangular)` →
    `{ name (common), name_long, d (SVG path), bbox:[minx,miny,maxx,maxy],
    labelrank, pop_est, centroid }`.
-5. Emit JSON (or a generated `.rs`) map: **`ADM0_A3 → { … }`**.
+6. Emit JSON (or a generated `.rs`) map: **`ADM0_A3 → { … }`**.
 
-App loads via `include_str!` + `serde_json`, renders all ~239 `<path>` once,
+App loads via `include_str!` + `serde_json`, renders all ~240 `<path>` once,
 **varies the `fill` attribute per Card** (Dioxus #2274 workaround — vary `fill`,
 not SVG child nodes), sets `viewBox` per Card (§4.2).
 
@@ -192,7 +198,7 @@ stacked grades.**
 ### 4.4 Settings screen
 
 - **New-cards/day stepper** (default 10) — the **only** interactive control.
-- Read-only rows: Scheduler (FSRS), Deck (239, incl. contested).
+- Read-only rows: Scheduler (FSRS), Deck (240, incl. contested).
 
 ### 4.5 Done-for-today
 
@@ -297,12 +303,12 @@ dev-dependency only in v6+, whole prod dep set is pure Rust, cross-compiles to
 
 **A single serde-JSON file in `Library/Application Support/<app>/`.** SQLite
 (`rusqlite`, `features=["bundled"]`) is the fallback if the dataset grows or
-formal migrations are wanted (over-engineered for 239 records).
+formal migrations are wanted (over-engineered for 240 records).
 
 - Dioxus mobile runs **Rust natively** (it drives, but does not run inside, the
   WKWebView). This is a **native-filesystem** problem — `localStorage`/IndexedDB
   are irrelevant.
-- ~239 records + settings is tens of KB. Hold in a `Signal`/struct, persist on
+- ~240 records + settings is tens of KB. Hold in a `Signal`/struct, persist on
   mutation. Write **atomically** (temp file in same dir → `rename`). Include
   `schema_version: u32`; migrate by load-all/save-all.
 - **The one unavoidable platform-specific piece**: obtaining the iOS sandbox
@@ -333,7 +339,7 @@ formal migrations are wanted (over-engineered for 239 records).
 
 Not a product decision — a suggested execution order for the build session(s).
 
-1. **Geometry asset pipeline** (§3): d3-geo script producing the 239-entry
+1. **Geometry asset pipeline** (§3): d3-geo script producing the 240-entry
    `ADM0_A3 → {…}` asset, incl. Palestine swap and mainland-bbox framing. Verify
    antimeridian entities.
 2. **Persistence layer** (§6): `objc2` path helper, atomic JSON load/save,
