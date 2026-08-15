@@ -50,7 +50,7 @@ fn HomeView(counts: SessionCounts) -> Element {
             pt-[calc(28px+env(safe-area-inset-top))] pb-[calc(24px+env(safe-area-inset-bottom))]",
 
             div { class: "pt-6",
-                h1 { class: "text-[34px] font-[750] tracking-[-0.02em]", "Wayfinder" }
+                h1 { class: "text-[34px] font-[750] tracking-[-0.02em]", "World Learn" }
                 p { class: "mt-1 text-[15px] text-ink-dim", "Learn where every country is." }
             }
 

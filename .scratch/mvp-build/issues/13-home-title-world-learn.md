@@ -23,6 +23,6 @@ just this title string.
 
 ## Acceptance
 
-- [ ] Home screen `h1` reads "World Learn"
-- [ ] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+- [x] Home screen `h1` reads "World Learn"
+- [x] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
       `cargo fmt --check`, `cargo check --target aarch64-apple-ios`
