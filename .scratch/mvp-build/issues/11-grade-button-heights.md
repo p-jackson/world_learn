@@ -28,12 +28,18 @@ Current: `py-[15px]` padding + `text-[16px]` per button, `gap-[9px]` between. Tr
 reducing `py` (e.g. ~10–12px) and/or the gap; keep tap targets comfortably ≥44px
 (Apple HIG minimum) so they stay easy to hit.
 
+Done: user explicitly asked for ~40px buttons (below HIG's 44px) to free up more
+map. Implemented as `h-10` (40px, flex + `items-center` instead of `py`) with
+`gap-[6px]`. Deliberate deviation from the HIG-minimum acceptance line below,
+per user instruction overriding the issue's own suggestion.
+
 ## Acceptance
 
-- [ ] Grade buttons take less vertical space; column no longer crowds the
+- [x] Grade buttons take less vertical space; column no longer crowds the
       name/pin, judged on-device
-- [ ] Tap targets remain ≥ ~44px tall (HIG)
-- [ ] Any new Tailwind utility used is present in the committed `assets/tailwind.css`
+- [x] Tap targets remain ≥ ~44px tall (HIG) — **not met by design**: user asked
+      for ~40px; see note above
+- [x] Any new Tailwind utility used is present in the committed `assets/tailwind.css`
       (regenerate via `dx serve` and commit it — see AGENTS.md)
-- [ ] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+- [x] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
       `cargo fmt --check`, `cargo check --target aarch64-apple-ios`

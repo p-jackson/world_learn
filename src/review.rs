@@ -243,10 +243,10 @@ fn CardView(
                     div { class: "mt-0.5 mb-4 text-center text-[14px] text-[#dfe8f0] [text-shadow:0_1px_6px_#000]",
                         "{card.entity.name_long}"
                     }
-                    div { class: "flex flex-col gap-[9px]",
+                    div { class: "flex flex-col gap-[6px]",
                         for grade in Grade::ALL {
                             button {
-                                class: "rounded-[14px] px-[18px] py-[15px] text-left text-[16px] font-[650] text-ink-on-light {grade.bg()}",
+                                class: "flex h-10 items-center rounded-[14px] px-[18px] text-left text-[16px] font-[650] text-ink-on-light {grade.bg()}",
                                 onclick: move |_| on_grade.call(grade),
                                 "{grade.label()}"
                             }
