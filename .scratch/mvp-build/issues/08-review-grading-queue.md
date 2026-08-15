@@ -42,7 +42,19 @@ driver in `src/review.rs`; `main.rs` opens the real store and runs it.
 - Reviewed via `/code-review` (Standards + Spec). Applied: shared `start_session`
   helper (dedupe + consistent error surfacing on the restart path), Done glyph
   ✅→✓ to match the spec literal.
-- **Not yet eyeballed in the simulator** — the loop logic is unit-tested (52 green),
-  but the advance/Done transitions on-device want a `dx serve --ios` pass.
+- **Eyeballed in the iOS simulator** (2026-08-15, `dx serve --ios`, iPhone 16e).
+  All six acceptance checks confirmed on-device: front (China 1/10, boundaries +
+  amber highlight + progress strip), reveal (Russia: common + long name, 📍 on the
+  entity, four red/orange/green/blue grade buttons), advance/reframe (Russia→Japan
+  resets to front + reframes + strip advances), Again re-drill (Japan Again kept
+  the counter at 2/3 and re-showed Japan after Mexico), Done ("3 reviewed" — passes
+  not taps, despite 4 taps incl. an Again), and quit-safety (Again'd Russia
+  persisted `due=today` and returned at the front after kill+relaunch). No fixes
+  needed for issue 08 itself.
+- **Framing defect found & logged (not issue 08):** huge/high-latitude countries
+  (Russia the clear case) render as a near-global, horizontally-squished world
+  instead of a regional zoom — a `Frame::for_bbox` (issue 06) limitation surfaced
+  by this pass. Written up with repro + root cause + proposed fix in
+  `10-large-country-framing-distortion.md` (`ready-for-agent`).
 - `cargo test` (52), `clippy -D warnings`, `fmt --check`, and
   `cargo check --target aarch64-apple-ios` all green.
