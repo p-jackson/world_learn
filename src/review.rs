@@ -232,10 +232,14 @@ fn CardView(
                 span { class: "text-ink-dim", "{position.counter()}" }
             }
 
-            // Bottom overlay: the reveal pill (front) or names + grade column (reveal).
+            // Bottom overlay: the reveal pill (front) or names + grade column
+            // (reveal). The scrim is reveal-only — the front pill is already opaque
+            // and self-legible, so the front state stays full-bleed instead of
+            // painting a dark band over the home-indicator safe area (the "chin").
             div {
                 class: "absolute inset-x-0 bottom-0 z-[3] px-[18px] pt-5 \
-                    pb-[calc(20px+env(safe-area-inset-bottom))] bg-[linear-gradient(transparent,#000c_28%)]",
+                    pb-[calc(20px+env(safe-area-inset-bottom))]",
+                class: if revealed() { "bg-[linear-gradient(transparent,#000c_28%)]" },
                 if revealed() {
                     div { class: "text-center text-[32px] font-[750] tracking-[-0.01em] [text-shadow:0_2px_10px_#000]",
                         "{card.entity.name}"

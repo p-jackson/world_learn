@@ -51,7 +51,23 @@ fn main() {
     // makes the setup explicit. See AGENTS.md "Error handling" for how errors are
     // given context and logged at the app boundary.
     dioxus::logger::initialize_default();
-    dioxus::launch(App);
+
+    // Full-bleed presentation (spec §3.3/§4.1): paint the `body` the ocean colour
+    // so any exposed safe-area band reads as dark ocean, not the default white.
+    // The colour mirrors `--color-ocean` in assets/tailwind.css; kept as a literal
+    // since this runs before that stylesheet loads.
+    //
+    // The `viewport-fit=cover` meta is aspirational: WKWebView still insets the
+    // layout viewport by the bottom home-indicator safe area, so the map does not
+    // actually render into that strip (the ocean `body` colour fills it instead).
+    // Making the map truly reach the home indicator needs a native WKWebView tweak
+    // — see .scratch/mvp-build/issues/19-map-into-bottom-safe-area.md.
+    let cfg = dioxus::mobile::Config::new().with_custom_head(
+        r#"<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>html, body { background-color: #0f1720; }</style>"#
+            .to_string(),
+    );
+    dioxus::LaunchBuilder::new().with_cfg(cfg).launch(App);
 }
 
 /// Resolve the two long-lived handles every screen needs: the Deck (parsed from the

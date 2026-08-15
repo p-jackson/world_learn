@@ -56,9 +56,9 @@ const CONTEXT_MARGIN_DEG: f64 = 10.6;
 /// centres so the transform never collapses the map to a vertical line. No
 /// inhabited Entity's mainland reaches it.
 const MIN_COS_SCALE: f64 = 0.1;
-/// Reveal-pin glyph size as a fraction of the framed window's span. The square
-/// `viewBox` always maps to the same rendered box under `meet`, so a span-relative
-/// size keeps the pin's apparent size roughly constant across Cards.
+/// Reveal-pin glyph size as a fraction of the framed window's span. `slice`
+/// scales the square `viewBox` uniformly in x and y regardless of crop, so a
+/// span-relative size keeps the pin's apparent size roughly constant across Cards.
 const PIN_SIZE_FRACTION: f64 = 0.06;
 
 /// The world is drawn three times — the map proper plus a wrap copy `∓360°`
@@ -255,7 +255,7 @@ pub fn WorldMap(
                 [&_path]:stroke-land-edge [&_path]:stroke-1 \
                 [&_path]:[vector-effect:non-scaling-stroke] [&_path]:[stroke-linejoin:round]",
             view_box: "{view_box}",
-            preserve_aspect_ratio: "xMidYMid meet",
+            preserve_aspect_ratio: "xMidYMid slice",
             for (key, shift) in WRAP_COPIES {
                 g {
                     key: "{key}",
@@ -442,8 +442,8 @@ mod tests {
     #[test]
     fn pin_font_size_scales_with_the_framed_span() {
         // Sizing off the span (not a fixed user-unit) keeps the pin's apparent size
-        // constant under `meet`: a tiny island's floored window and a wide mainland
-        // each get a pin proportional to their own window.
+        // constant under uniform scaling: a tiny island's floored window and a wide
+        // mainland each get a pin proportional to their own window.
         let tiny = Frame::for_bbox([166.93, 0.52, 166.93, 0.52]); // floored to the margins
         approx(tiny.pin_font_size(), MARGINS * PIN_SIZE_FRACTION);
         let wide = Frame::for_bbox([-30.0, -2.0, 30.0, 2.0]);
