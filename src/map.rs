@@ -52,6 +52,10 @@ const MIN_WINDOW_DEG: f64 = 20.0;
 /// centres so the transform never collapses the map to a vertical line. No
 /// inhabited Entity's mainland reaches it.
 const MIN_COS_SCALE: f64 = 0.1;
+/// Reveal-pin glyph size as a fraction of the framed window's span. The square
+/// `viewBox` always maps to the same rendered box under `meet`, so a span-relative
+/// size keeps the pin's apparent size roughly constant across Cards.
+const PIN_SIZE_FRACTION: f64 = 0.06;
 
 /// The regional-zoom framing for one Entity: a square `viewBox` plus a horizontal
 /// cos(lat) correction, both derived from the Entity's **mainland** bbox — the
@@ -127,6 +131,21 @@ impl Frame {
         )
     }
 
+    /// Post-transform x for a raw projected x — the same cos(lat) correction the
+    /// group `transform` applies to the geometry (`x ↦ k·x + cx·(1−k)`). The reveal
+    /// pin is drawn *outside* that group (so its glyph isn't horizontally squished),
+    /// so it must carry the correction itself to land over the entity's centroid.
+    fn correct_x(&self, x: f64) -> f64 {
+        self.scale_x
+            .mul_add(x, self.center_x * (1.0 - self.scale_x))
+    }
+
+    /// Reveal-pin glyph size in projected-degree user units ([`PIN_SIZE_FRACTION`]
+    /// of the framed span).
+    fn pin_font_size(&self) -> f64 {
+        self.span * PIN_SIZE_FRACTION
+    }
+
     /// The horizontal cos(lat) correction factor — for tests to assert the
     /// correction directly rather than reverse-parsing [`Self::transform`].
     #[cfg(test)]
@@ -187,16 +206,34 @@ impl Deref for SharedDeck {
 /// and one group `transform`. With no valid highlight the map shows the whole
 /// world ([`WORLD_VIEW_BOX`], no transform). Both are attributes on fixed nodes,
 /// so a Card change re-frames without touching the path tree (Dioxus #2274).
+///
+/// When `pin` is set, a 📍 marks the highlighted Card's centroid (the reveal
+/// state, spec §4.1). It renders as a `<text>` *outside* the cos-correction group
+/// — so its glyph isn't horizontally squished — carrying the correction on its own
+/// x ([`Frame::correct_x`]). The node is always present for a highlighted Card and
+/// only its visibility toggles with `pin`, so front⇄reveal never restructures the
+/// SVG children (Dioxus #2274).
 #[component]
-pub fn WorldMap(deck: SharedDeck, highlighted: ReadSignal<String>) -> Element {
+pub fn WorldMap(
+    deck: SharedDeck,
+    highlighted: ReadSignal<String>,
+    #[props(default)] pin: bool,
+) -> Element {
     let highlighted = highlighted();
-    let frame = deck
-        .get(&highlighted)
-        .map(|card| Frame::for_bbox(card.entity.bbox));
+    let highlighted_card = deck.get(&highlighted);
+    let frame = highlighted_card.map(|card| Frame::for_bbox(card.entity.bbox));
     let view_box = frame
         .as_ref()
         .map_or_else(|| WORLD_VIEW_BOX.to_string(), Frame::view_box);
     let transform = frame.as_ref().map(Frame::transform);
+    let pin_marker = frame.as_ref().zip(highlighted_card).map(|(f, card)| {
+        let [cx, cy] = card.entity.centroid;
+        (
+            svg_num(f.correct_x(cx)),
+            svg_num(cy),
+            svg_num(f.pin_font_size()),
+        )
+    });
     rsx! {
         svg {
             class: "block h-full w-full \
@@ -212,6 +249,16 @@ pub fn WorldMap(deck: SharedDeck, highlighted: ReadSignal<String>) -> Element {
                         d: "{card.entity.d}",
                         fill: fill_for(&card.code, &highlighted),
                     }
+                }
+            }
+            if let Some((px, py, size)) = pin_marker {
+                text {
+                    x: "{px}",
+                    y: "{py}",
+                    "font-size": "{size}",
+                    "text-anchor": "middle",
+                    class: if pin { "[filter:drop-shadow(0_1px_2px_#000a)]" } else { "opacity-0" },
+                    "📍"
                 }
             }
         }
@@ -294,6 +341,37 @@ mod tests {
         // Corrected width 20·0.5 = 10 < height 20 → span off the height.
         let [_, _, w, _] = parse_view_box(&frame.view_box());
         approx(w, 20.0 * FRAME_PADDING);
+    }
+
+    #[test]
+    fn pin_x_is_the_fixed_point_at_the_frame_centre() {
+        // The cos-correction pivots about the frame centre, so a centroid on the
+        // centre-x isn't shifted regardless of latitude.
+        let frame = Frame::for_bbox([10.0, -70.0, 30.0, -50.0]); // center_x = 20
+        approx(frame.correct_x(20.0), 20.0);
+    }
+
+    #[test]
+    fn pin_x_compresses_toward_the_centre_at_high_latitude() {
+        // center_x = 20, k = cos60° = 0.5: a centroid 10° east of centre is pulled
+        // to half that offset (x ↦ k·x + cx·(1−k)), matching the geometry the group
+        // transform draws so the pin lands on the entity, not beside it.
+        let frame = Frame::for_bbox([10.0, -70.0, 30.0, -50.0]);
+        approx(frame.correct_x(30.0), 25.0); // 20 + 0.5·(30−20)
+    }
+
+    #[test]
+    fn pin_font_size_scales_with_the_framed_span() {
+        // Sizing off the span (not a fixed user-unit) keeps the pin's apparent size
+        // constant under `meet`: a tiny island's floored window and a wide mainland
+        // each get a pin proportional to their own window.
+        let tiny = Frame::for_bbox([166.91, 0.49, 166.96, 0.55]); // floored to MIN_WINDOW_DEG
+        approx(tiny.pin_font_size(), MIN_WINDOW_DEG * PIN_SIZE_FRACTION);
+        let wide = Frame::for_bbox([-30.0, -2.0, 30.0, 2.0]);
+        approx(
+            wide.pin_font_size(),
+            60.0 * FRAME_PADDING * PIN_SIZE_FRACTION,
+        );
     }
 
     #[test]

@@ -2,12 +2,14 @@ use dioxus::prelude::*;
 
 mod deck;
 mod map;
+mod review;
 mod scheduler;
 mod session;
 mod store;
 
 use deck::Deck;
-use map::{SharedDeck, WorldMap};
+use map::SharedDeck;
+use review::{QueuePosition, Review};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 // Tailwind output, compiled from `tailwind.css` by `dx serve` (Dioxus 0.7
@@ -41,7 +43,7 @@ fn App() -> Element {
         document::Link { rel: "icon", href: FAVICON }
         document::Stylesheet { href: TAILWIND_CSS }
         match deck {
-            Ok(deck) => rsx! { MapScreen { deck } },
+            Ok(deck) => rsx! { ReviewDemo { deck } },
             Err(err) => rsx! {
                 div { class: "p-6 font-sans text-base text-danger", "Failed to load map: {err}" }
             },
@@ -49,47 +51,20 @@ fn App() -> Element {
     }
 }
 
-/// Throwaway scaffold for issue 05: shows the map full-bleed with a dev bar to
-/// pick which `ADM0_A3` is highlighted (type a code, or step through the Deck).
-/// Real navigation is issue 09; this exists only to demo the render primitive.
+/// Throwaway scaffold for issue 07: renders the Review screen full-bleed on a
+/// single hardcoded Card so front⇄reveal is demoable. Real navigation and the
+/// session queue arrive in issues 08–09; this exists only to demo the presentation.
 #[component]
-fn MapScreen(deck: SharedDeck) -> Element {
-    let len = deck.len();
-    let mut idx = use_signal(|| 0usize);
-    let card = deck.cards()[idx()].clone();
-
-    let jump_deck = deck.clone();
-    let step = "rounded-[10px] bg-land px-[18px] py-1.5 text-[22px] leading-none text-ink";
+fn ReviewDemo(deck: SharedDeck) -> Element {
+    // France is a good demo Card: a mainland frame with visible neighbours.
+    let card = deck
+        .get("FRA")
+        .or_else(|| deck.cards().first())
+        .expect("the shipped Deck is never empty")
+        .clone();
     rsx! {
-        div { class: "fixed inset-0 flex flex-col bg-ocean",
-            div { class: "min-h-0 flex-1",
-                WorldMap { deck, highlighted: card.code.clone() }
-            }
-            div { class: "flex items-center gap-3 bg-panel px-4 py-3 font-sans text-[15px] text-ink",
-                button {
-                    class: step,
-                    onclick: move |_| idx.set((idx() + len - 1) % len),
-                    "‹"
-                }
-                input {
-                    class: "w-[4.5em] rounded-[10px] border border-line bg-ocean px-2 py-1.5 uppercase tracking-[0.08em] text-ink",
-                    value: "{card.code}",
-                    maxlength: 3,
-                    autocapitalize: "characters",
-                    oninput: move |e| {
-                        let code = e.value().to_uppercase();
-                        if let Some(i) = jump_deck.cards().iter().position(|c| c.code == code) {
-                            idx.set(i);
-                        }
-                    },
-                }
-                span { class: "flex-1 text-ink-dim", "{card.entity.name}" }
-                button {
-                    class: step,
-                    onclick: move |_| idx.set((idx() + 1) % len),
-                    "›"
-                }
-            }
+        div { class: "fixed inset-0",
+            Review { deck, card, position: QueuePosition { index: 0, total: 11 } }
         }
     }
 }

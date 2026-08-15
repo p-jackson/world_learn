@@ -12,4 +12,12 @@
     --color-panel: #151f2a;
     --color-line: #2a3a4a;
     --color-danger: #ef5a5a;
+    --color-accent: #4c9aff;
+    /* Dark ink for text on light button surfaces (grade buttons, reveal pill). */
+    --color-ink-on-light: #0a0f14;
+    /* Grade-button colours — Again/Hard/Good/Easy (spec §4.1). */
+    --color-again: #ef5a5a;
+    --color-hard: #e8923c;
+    --color-good: #43b968;
+    --color-easy: #4c9aff;
 }
