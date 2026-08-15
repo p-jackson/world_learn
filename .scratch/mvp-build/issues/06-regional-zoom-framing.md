@@ -6,8 +6,8 @@ Source spec: `.scratch/mvp-spec/spec.md` §3.2, §4.2.
 
 **Blocked by:** 05 (SVG map component).
 
-- [ ] `viewBox` = the entity's **mainland** bbox (from the asset) × ~3.4 padding, square, centred
-- [ ] Minimum span enforced (~6° → ~20° window) so tiny/island entities aren't over-zoomed
-- [ ] Per-Card `cos(lat_center)` horizontal correction applied via a group transform (latitude midpoint of the frame)
-- [ ] Zoom is a pure per-Card `viewBox` swap on the single rendered map — no per-card re-projection, no re-render of paths
-- [ ] Demoable: France frames on the European mainland (not the Atlantic out to French Guiana); a small island (e.g. Nauru/Niue) shows a sane window, not a pinpoint; a high-latitude entity is not horizontally stretched
+- [x] `viewBox` = the entity's **mainland** bbox (from the asset) × ~3.4 padding, square, centred
+- [x] Minimum span enforced (~6° → ~20° window) so tiny/island entities aren't over-zoomed
+- [x] Per-Card `cos(lat_center)` horizontal correction applied via a group transform (latitude midpoint of the frame)
+- [x] Zoom is a pure per-Card `viewBox` swap on the single rendered map — no per-card re-projection, no re-render of paths
+- [x] Demoable: France frames on the European mainland (not the Atlantic out to French Guiana); a small island (e.g. Nauru/Niue) shows a sane window, not a pinpoint; a high-latitude entity is not horizontally stretched

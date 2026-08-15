@@ -10,7 +10,11 @@
 //! Projection is the pipeline's equirectangular `(lon, -lat)` degree space
 //! (issue 01): x = longitude, y = negative latitude so north is up. The whole
 //! world therefore spans x ∈ [-180, 180], y ∈ [-90, 90] — [`WORLD_VIEW_BOX`].
-//! This ticket renders at world scale only; per-Card framing/zoom is issue 06.
+//!
+//! The highlighted Card's regional zoom is a pure per-Card [`Frame`]: a `viewBox`
+//! swap plus one group `transform` on the single rendered map — no re-projection,
+//! no path re-render (issue 06, spec §3.2/§4.2). With no highlight the map falls
+//! back to [`WORLD_VIEW_BOX`].
 
 use std::ops::Deref;
 use std::rc::Rc;
@@ -37,6 +41,110 @@ pub fn fill_for(code: &str, highlighted: &str) -> &'static str {
     } else {
         BASE_FILL
     }
+}
+
+/// Padding multiplier on the mainland bbox → the framed window (spec §4.2).
+const FRAME_PADDING: f64 = 3.4;
+/// Floor on the framed window's span, in projected degrees, so tiny/island
+/// entities get a sane window rather than a pinpoint (§4.2: ~6° bbox → ~20°).
+const MIN_WINDOW_DEG: f64 = 20.0;
+/// Floor on the cos(lat) x-scale — a degenerate guard for near-polar frame
+/// centres so the transform never collapses the map to a vertical line. No
+/// inhabited Entity's mainland reaches it.
+const MIN_COS_SCALE: f64 = 0.1;
+
+/// The regional-zoom framing for one Entity: a square `viewBox` plus a horizontal
+/// cos(lat) correction, both derived from the Entity's **mainland** bbox — the
+/// asset's `bbox`, already the largest polygon, so France frames on the European
+/// mainland, not out across the Atlantic to French Guiana (spec §4.2).
+///
+/// A Card's zoom is applying this Frame to the one rendered map: [`Self::view_box`]
+/// swaps the `viewBox`, [`Self::transform`] sets one group `transform`. Nothing
+/// re-projects and no `<path>` changes.
+///
+/// Fields are the projected-degree geometry (`x = lon`, `y = -lat`); the string
+/// builders format them as SVG attributes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Frame {
+    /// Frame-centre x (projected longitude) — the cos-correction pivot.
+    center_x: f64,
+    /// Frame-centre y (projected −latitude).
+    center_y: f64,
+    /// Side of the square window, in projected degrees.
+    span: f64,
+    /// Horizontal scale = cos(frame-centre latitude): undoes the equirectangular
+    /// high-latitude horizontal stretch, applied about the frame centre.
+    scale_x: f64,
+}
+
+impl Frame {
+    /// Frame the mainland `bbox` = `[minx, miny, maxx, maxy]` (projected coords).
+    ///
+    /// The window is square and padded around the mainland, floored to a minimum
+    /// span. The longitude extent is compressed by cos(lat) before choosing the
+    /// square side, so the window frames the mainland's real-world footprint (the
+    /// same correction the group transform then applies to the geometry) rather
+    /// than its equirectangular-stretched one.
+    pub fn for_bbox(bbox: [f64; 4]) -> Self {
+        let [min_x, min_y, max_x, max_y] = bbox;
+        let center_x = f64::midpoint(min_x, max_x);
+        let center_y = f64::midpoint(min_y, max_y);
+        // y = −lat, so the frame's midpoint latitude is −center_y.
+        let scale_x = (-center_y).to_radians().cos().max(MIN_COS_SCALE);
+        let corrected_width = (max_x - min_x) * scale_x;
+        let height = max_y - min_y;
+        let span = (corrected_width.max(height) * FRAME_PADDING).max(MIN_WINDOW_DEG);
+        Self {
+            center_x,
+            center_y,
+            span,
+            scale_x,
+        }
+    }
+
+    /// The square `viewBox` string `min-x min-y span span`, centred on the mainland.
+    pub fn view_box(&self) -> String {
+        let half = self.span / 2.0;
+        format!(
+            "{} {} {} {}",
+            svg_num(self.center_x - half),
+            svg_num(self.center_y - half),
+            svg_num(self.span),
+            svg_num(self.span),
+        )
+    }
+
+    /// The group `transform`: scale x by cos(lat) about the frame centre so
+    /// high-latitude entities aren't horizontally stretched (§3.2). This is
+    /// `translate(cx) scale(k) translate(-cx)` collapsed to one translate + scale
+    /// (`x ↦ k·x + cx·(1−k)`), leaving y untouched.
+    pub fn transform(&self) -> String {
+        let tx = self.center_x * (1.0 - self.scale_x);
+        format!(
+            "translate({} 0) scale({} 1)",
+            svg_num(tx),
+            svg_num(self.scale_x)
+        )
+    }
+
+    /// The horizontal cos(lat) correction factor — for tests to assert the
+    /// correction directly rather than reverse-parsing [`Self::transform`].
+    #[cfg(test)]
+    pub const fn scale_x(&self) -> f64 {
+        self.scale_x
+    }
+}
+
+/// Format a number for an SVG attribute: rounded to 3 decimals, with trailing
+/// zeros and any negative zero normalised away so attributes stay compact and
+/// stable. `+ 0.0` collapses IEEE `-0.0` to `+0.0` (`-0.0 + 0.0 == +0.0`).
+fn svg_num(v: f64) -> String {
+    let rounded = (v * 1000.0).round() / 1000.0 + 0.0;
+    let mut s = format!("{rounded:.3}");
+    while s.contains('.') && (s.ends_with('0') || s.ends_with('.')) {
+        s.pop();
+    }
+    s
 }
 
 /// A shared, immutable [`Deck`] cheap enough to pass as a prop: an `Rc` compared
@@ -72,22 +180,38 @@ impl Deref for SharedDeck {
 /// Renders all Deck paths once in fixed intro order; only the highlighted Card's
 /// `fill` differs. The boundary stroke is uniform and non-scaling, applied to
 /// every child `<path>` via one Tailwind child-variant on the `<svg>`, so it
-/// stays visible on every Entity in both states independent of `fill`.
+/// stays visible on every Entity in both states independent of `fill` and of the
+/// group's cos-correction scale.
+///
+/// The highlighted Card's [`Frame`] drives the regional zoom: its `viewBox` swap
+/// and one group `transform`. With no valid highlight the map shows the whole
+/// world ([`WORLD_VIEW_BOX`], no transform). Both are attributes on fixed nodes,
+/// so a Card change re-frames without touching the path tree (Dioxus #2274).
 #[component]
 pub fn WorldMap(deck: SharedDeck, highlighted: ReadSignal<String>) -> Element {
     let highlighted = highlighted();
+    let frame = deck
+        .get(&highlighted)
+        .map(|card| Frame::for_bbox(card.entity.bbox));
+    let view_box = frame
+        .as_ref()
+        .map_or_else(|| WORLD_VIEW_BOX.to_string(), Frame::view_box);
+    let transform = frame.as_ref().map(Frame::transform);
     rsx! {
         svg {
             class: "block h-full w-full \
                 [&_path]:stroke-land-edge [&_path]:stroke-1 \
                 [&_path]:[vector-effect:non-scaling-stroke] [&_path]:[stroke-linejoin:round]",
-            view_box: WORLD_VIEW_BOX,
+            view_box: "{view_box}",
             preserve_aspect_ratio: "xMidYMid meet",
-            for card in deck.cards() {
-                path {
-                    key: "{card.code}",
-                    d: "{card.entity.d}",
-                    fill: fill_for(&card.code, &highlighted),
+            g {
+                transform,
+                for card in deck.cards() {
+                    path {
+                        key: "{card.code}",
+                        d: "{card.entity.d}",
+                        fill: fill_for(&card.code, &highlighted),
+                    }
                 }
             }
         }
@@ -104,6 +228,116 @@ mod tests {
         assert_eq!(fill_for("DEU", "FRA"), BASE_FILL);
         // Unknown highlight code → nothing highlighted.
         assert_eq!(fill_for("FRA", "ZZZ"), BASE_FILL);
+    }
+
+    /// Parse a `viewBox` string into `[min-x, min-y, width, height]`.
+    fn parse_view_box(vb: &str) -> [f64; 4] {
+        let nums: Vec<f64> = vb.split_whitespace().map(|n| n.parse().unwrap()).collect();
+        [nums[0], nums[1], nums[2], nums[3]]
+    }
+
+    /// Assert two projected-degree quantities are equal within rounding noise.
+    fn approx(a: f64, b: f64) {
+        assert!((a - b).abs() < 1e-6, "{a} != {b}");
+    }
+
+    /// The [`Frame`] for a real-deck Entity by code.
+    fn frame_for(deck: &Deck, code: &str) -> Frame {
+        Frame::for_bbox(deck.get(code).unwrap().entity.bbox)
+    }
+
+    #[test]
+    fn frame_centres_a_square_window_on_the_bbox() {
+        // Symmetric bbox on the equator (lat 0 → no cos correction): the window is
+        // centred and square, padded by FRAME_PADDING off the larger dimension.
+        let frame = Frame::for_bbox([-5.0, -5.0, 5.0, 5.0]);
+        let [min_x, min_y, width, height] = parse_view_box(&frame.view_box());
+        approx(width, 34.0); // square, 10° × 3.4 padding
+        approx(height, 34.0);
+        approx(min_x + width / 2.0, 0.0); // centred on the bbox
+        approx(min_y + height / 2.0, 0.0);
+    }
+
+    #[test]
+    fn frame_stays_square_for_a_wide_bbox() {
+        // A wide, short mainland still frames square, sized off the larger side.
+        let frame = Frame::for_bbox([-30.0, -2.0, 30.0, 2.0]);
+        let [_, _, w, h] = parse_view_box(&frame.view_box());
+        approx(w, h); // viewBox width equals height
+        approx(w, 60.0 * FRAME_PADDING); // sized off the 60° width
+    }
+
+    #[test]
+    fn frame_enforces_the_minimum_window_for_tiny_entities() {
+        // Nauru-scale bbox (~0.05°): padding alone gives a pinpoint, so the floor
+        // takes over and the window is exactly the minimum span.
+        let frame = Frame::for_bbox([166.91, 0.49, 166.96, 0.55]);
+        let [_, _, w, h] = parse_view_box(&frame.view_box());
+        approx(w, MIN_WINDOW_DEG);
+        approx(h, MIN_WINDOW_DEG);
+    }
+
+    #[test]
+    fn frame_is_identity_scale_on_the_equator() {
+        // lat 0 → cos = 1 → no horizontal compression.
+        let frame = Frame::for_bbox([-5.0, -5.0, 5.0, 5.0]);
+        assert_eq!(frame.transform(), "translate(0 0) scale(1 1)");
+    }
+
+    #[test]
+    fn frame_compresses_x_at_high_latitude() {
+        // Frame centred at lat 60 (center_y = −60) → cos 60° = 0.5: the group
+        // transform halves x about the centre so the entity isn't stretched.
+        let frame = Frame::for_bbox([10.0, -70.0, 30.0, -50.0]);
+        // center_x = 20, k = 0.5 → tx = 20·(1−0.5) = 10.
+        assert_eq!(frame.transform(), "translate(10 0) scale(0.5 1)");
+        // Corrected width 20·0.5 = 10 < height 20 → span off the height.
+        let [_, _, w, _] = parse_view_box(&frame.view_box());
+        approx(w, 20.0 * FRAME_PADDING);
+    }
+
+    #[test]
+    fn real_deck_frames_france_on_the_european_mainland() {
+        // Mainland bbox (asset uses the largest polygon), so the window sits over
+        // continental France — a modest span, not blown out across the Atlantic to
+        // French Guiana.
+        let deck = Deck::load().unwrap();
+        let frame = frame_for(&deck, "FRA");
+        let [min_x, min_y, width, height] = parse_view_box(&frame.view_box());
+        assert!(
+            width < 40.0,
+            "framed on Europe, not the Atlantic (span {width})"
+        );
+        let (cx, cy) = (min_x + width / 2.0, min_y + height / 2.0);
+        assert!(
+            (0.0..4.0).contains(&cx),
+            "centre longitude in France ({cx})"
+        );
+        assert!(
+            (-52.0..-42.0).contains(&cy),
+            "centre latitude in France ({cy})"
+        );
+    }
+
+    #[test]
+    fn real_deck_gives_a_small_island_a_sane_window() {
+        // Niue: a tiny island floored to the minimum window, not a pinpoint.
+        let deck = Deck::load().unwrap();
+        let frame = frame_for(&deck, "NIU");
+        let [_, _, w, _] = parse_view_box(&frame.view_box());
+        approx(w, MIN_WINDOW_DEG);
+    }
+
+    #[test]
+    fn real_deck_corrects_a_high_latitude_entity() {
+        // Iceland (~65°N): the x-scale is well below 1, so the render is
+        // horizontally corrected rather than stretched.
+        let deck = Deck::load().unwrap();
+        let scale = frame_for(&deck, "ISL").scale_x();
+        assert!(
+            scale < 0.5,
+            "high-latitude x-scale should be < 0.5 (got {scale})"
+        );
     }
 
     #[test]
