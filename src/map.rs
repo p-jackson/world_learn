@@ -225,8 +225,9 @@ fn wrap_transform(frame: Option<&Frame>, shift: f64) -> Option<String> {
 /// state). It renders as a `<text>` *outside* the cos-correction group
 /// — so its glyph isn't horizontally squished — carrying the correction on its own
 /// x ([`Frame::correct_x`]). The node is always present for a highlighted Card and
-/// only its visibility toggles with `pin`, so front⇄reveal never restructures the
-/// SVG children (Dioxus #2274).
+/// only its `class` toggles with `pin` — a drop-in entrance animation on reveal,
+/// `opacity-0` otherwise — so front⇄reveal never restructures the SVG children
+/// (Dioxus #2274).
 #[component]
 pub fn WorldMap(
     deck: SharedDeck,
@@ -273,7 +274,11 @@ pub fn WorldMap(
                     y: "{py}",
                     "font-size": "{size}",
                     "text-anchor": "middle",
-                    class: if pin { "[filter:drop-shadow(0_1px_2px_#000a)]" } else { "opacity-0" },
+                    class: if pin {
+                        "[transform-box:fill-box] animate-pin-drop [filter:drop-shadow(0_1px_2px_#000a)]"
+                    } else {
+                        "opacity-0"
+                    },
                     "📍"
                 }
             }
