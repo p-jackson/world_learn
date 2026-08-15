@@ -1,6 +1,6 @@
 # 18 — Animate the reveal pin drop
 
-Status: ready-for-agent
+Status: done
 
 **What's wrong:** The reveal pin (📍) in `src/map.rs` toggles visibility via a
 plain `opacity-0` ⇄ visible class swap (`Map` component, `pin` prop, around
