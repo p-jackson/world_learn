@@ -1,4 +1,4 @@
-//! The world-map render primitive (spec §3.3, §4.1 render path).
+//! The world-map render primitive.
 //!
 //! Draws every Deck Entity once as an inline-SVG `<path>` and highlights one by
 //! **varying its `fill` attribute** — never by swapping SVG child nodes. That is
@@ -7,16 +7,15 @@
 //! `key`s, so changing the highlighted Card diffs two `fill` attributes and
 //! touches no node structure.
 //!
-//! Projection is the pipeline's equirectangular `(lon, -lat)` degree space
-//! (issue 01): x = longitude, y = negative latitude so north is up. The whole
-//! world therefore spans x ∈ [-180, 180], y ∈ [-90, 90] — [`WORLD_VIEW_BOX`].
+//! Projection is the pipeline's equirectangular `(lon, -lat)` degree space:
+//! x = longitude, y = negative latitude so north is up. The whole world therefore
+//! spans x ∈ [-180, 180], y ∈ [-90, 90] — [`WORLD_VIEW_BOX`].
 //!
 //! The highlighted Card's regional zoom is a pure per-Card [`Frame`]: a `viewBox`
 //! swap plus a group `transform` on each rendered copy — no re-projection, no path
-//! re-render (issue 06, spec §3.2/§4.2). The map is drawn three times, the proper
-//! map flanked by a `∓360°` wrap copy either side, so a frame near the ±180°
-//! antimeridian never shows the map's edge (issue 10). With no highlight the map
-//! falls back to [`WORLD_VIEW_BOX`].
+//! re-render. The map is drawn three times, the proper map flanked by a `∓360°`
+//! wrap copy either side, so a frame near the ±180° antimeridian never shows the
+//! map's edge. With no highlight the map falls back to [`WORLD_VIEW_BOX`].
 
 use dioxus::prelude::*;
 
@@ -42,13 +41,13 @@ pub fn fill_for(code: &str, highlighted: &str) -> &'static str {
     }
 }
 
-/// Context added around the framing bbox, in projected degrees, on **each** side
-/// (spec §4.2). Additive rather than a multiplier so the country's share of the
-/// window grows with its size: a giant like Russia fills most of the frame while
-/// still showing its neighbours, and a speck like Anguilla floats in a wide
-/// context window — the size-dependent zoom the multiplier couldn't give (a
-/// constant multiplier framed every country to the same fraction, blowing huge
-/// countries out to a near-global squish, issue 10). Pinned so Japan (framing
+/// Context added around the framing bbox, in projected degrees, on **each** side.
+/// Additive rather than a multiplier so the country's share of the window grows
+/// with its size: a giant like Russia fills most of the frame while still showing
+/// its neighbours, and a speck like Anguilla floats in a wide context window —
+/// the size-dependent zoom the multiplier couldn't give (a constant multiplier
+/// framed every country to the same fraction, blowing huge countries out to a
+/// near-global squish). Pinned so Japan (framing
 /// span ≈ 8.8°) lands at ≈ 30° total, the reference that reads well. The 2×
 /// margin also floors tiny entities at ≈ 21° with no separate minimum.
 const CONTEXT_MARGIN_DEG: f64 = 10.6;
@@ -63,7 +62,7 @@ const PIN_SIZE_FRACTION: f64 = 0.06;
 
 /// The world is drawn three times — the map proper plus a wrap copy `∓360°`
 /// either side — so a frame straddling the ±180° antimeridian never shows the
-/// bare edge of the map (issue 10). `(stable key, raw-longitude shift)`; the keys
+/// bare edge of the map. `(stable key, raw-longitude shift)`; the keys
 /// keep the three groups' node identity fixed across Card changes (Dioxus #2274).
 /// A single frame spans < 180°, so at most one wrap copy is ever on-screen; the
 /// other two sit outside the `viewBox` at no visible cost.
@@ -72,8 +71,7 @@ const WRAP_COPIES: [(&str, f64); 3] = [("wrap-w", -360.0), ("wrap-main", 0.0), (
 /// The regional-zoom framing for one Entity: a square `viewBox` plus a horizontal
 /// cos(lat) correction, both derived from the Entity's **framing** bbox — the
 /// asset's `bbox`, its mainland (or an archipelago's major islands), so France
-/// frames on the European mainland, not out across the Atlantic to French Guiana
-/// (spec §4.2).
+/// frames on the European mainland, not out across the Atlantic to French Guiana.
 ///
 /// A Card's zoom is applying this Frame to the rendered map: [`Self::view_box`]
 /// swaps the `viewBox`, [`Self::transform_shifted`] sets each copy's group
@@ -142,12 +140,12 @@ impl Frame {
 
     /// The group `transform` for a copy of the world shifted `shift` degrees in raw
     /// longitude: scale x by cos(lat) about the frame centre so high-latitude
-    /// entities aren't horizontally stretched (§3.2), then offset by the wrap
-    /// period. `translate(cx) scale(k) translate(-cx)` collapsed to one translate +
-    /// scale (`x ↦ k·(x + shift) + cx·(1−k)`), leaving y untouched. A frame near the
+    /// entities aren't horizontally stretched, then offset by the wrap period.
+    /// `translate(cx) scale(k) translate(-cx)` collapsed to one translate + scale
+    /// (`x ↦ k·(x + shift) + cx·(1−k)`), leaving y untouched. A frame near the
     /// ±180° antimeridian would otherwise show the bare edge of the map with an
     /// ocean void beyond it; drawing the same paths at `shift = ±360` places wrap
-    /// copies either side so context is continuous across the seam (issue 10).
+    /// copies either side so context is continuous across the seam.
     pub fn transform_shifted(&self, shift: f64) -> String {
         let tx = self
             .scale_x
@@ -224,7 +222,7 @@ fn wrap_transform(frame: Option<&Frame>, shift: f64) -> Option<String> {
 /// tree (Dioxus #2274).
 ///
 /// When `pin` is set, a 📍 marks the highlighted Card's centroid (the reveal
-/// state, spec §4.1). It renders as a `<text>` *outside* the cos-correction group
+/// state). It renders as a `<text>` *outside* the cos-correction group
 /// — so its glyph isn't horizontally squished — carrying the correction on its own
 /// x ([`Frame::correct_x`]). The node is always present for a highlighted Card and
 /// only its visibility toggles with `pin`, so front⇄reveal never restructures the
@@ -488,7 +486,7 @@ mod tests {
 
     #[test]
     fn real_deck_frames_russia_regionally_not_globally() {
-        // Issue 10: the old multiplier blew Russia's frame out to ≈ 264° (a
+        // A rejected multiplier-based framing blew Russia's frame out to ≈ 264° (a
         // near-global horizontal squish). The additive margin keeps it a regional
         // window well under a third of the globe.
         let deck = Deck::load().unwrap();
@@ -524,8 +522,8 @@ mod tests {
     #[test]
     fn exactly_one_entity_highlighted_over_the_real_deck() {
         let deck = Deck::load().unwrap();
-        // The ticket's core claim: a valid code highlights exactly one Entity and
-        // leaves the rest at base fill; a non-member highlights none.
+        // Core invariant: a valid code highlights exactly one Entity and leaves the
+        // rest at base fill; a non-member highlights none.
         let highlit = |target: &str| {
             deck.cards()
                 .iter()

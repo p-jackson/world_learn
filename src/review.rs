@@ -1,6 +1,5 @@
-//! The Review route: the front/reveal presentation (issue 07) wired to the
-//! scheduling core so grading drives the session (spec §4.1, §4.5), and the
-//! Done-for-today route it lands on (spec §4.5, issue 09 routing).
+//! The Review route: the front/reveal presentation wired to the scheduling core
+//! so grading drives the session, and the Done-for-today route it lands on.
 //!
 //! [`Review`] is the route component: it reads the shared [`SharedDeck`] and
 //! [`Store`] from context, owns the transient [`Session`] in a signal, hands the
@@ -26,7 +25,7 @@ use crate::store::Store;
 use crate::ui::{log_and_display, use_app_context, Failure};
 use crate::Route;
 
-/// The four FSRS self-grades, in button order (spec §4.1). A presentation-local
+/// The four FSRS self-grades, in button order. A presentation-local
 /// enum (labels + colours); [`From`] maps it to the scheduler's [`scheduler::Grade`]
 /// when the driver grades the session, keeping the view independent of the core.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,7 +49,7 @@ impl Grade {
         }
     }
 
-    /// Tailwind background token per grade — red / orange / green / blue (spec §4.1).
+    /// Tailwind background token per grade — red / orange / green / blue.
     const fn bg(self) -> &'static str {
         match self {
             Self::Again => "bg-again",
@@ -105,13 +104,13 @@ impl QueuePosition {
 }
 
 /// Start a session, surfacing a store-load failure as a display string (logged
-/// here, the app boundary, per AGENTS.md). [`Review`] renders the returned `Err`
-/// as an inline failure message rather than launching into a broken loop.
+/// here, the app boundary). [`Review`] renders the returned `Err` as an inline
+/// failure message rather than launching into a broken loop.
 fn start_session(deck: SharedDeck, store: Store, today: Date) -> Result<Session, String> {
     Session::start(deck, store, today).map_err(|e| log_and_display(&e))
 }
 
-/// The Review loop route (spec §4.1, §4.5, §4.7): owns the [`Session`] and advances
+/// The Review loop route: owns the [`Session`] and advances
 /// it on each grade. Renders the current Card via [`CardView`] until the queue
 /// drains, then navigates to [`Route::Done`] with the reviewed count.
 ///
@@ -121,7 +120,7 @@ fn start_session(deck: SharedDeck, store: Store, today: Date) -> Result<Session,
 /// requeue of an **Again**) and resets the reveal to front for the next Card.
 /// Persistence is the Session's own — a mid-session quit is safe because every
 /// grade has already written through (an **Again**'s `due = today` re-drill
-/// survives, spec §5.4).
+/// survives).
 #[component]
 pub fn Review() -> Element {
     let (deck, store) = use_app_context();
@@ -210,7 +209,7 @@ fn CardView(
     rsx! {
         div { class: "relative h-full w-full overflow-hidden bg-ocean font-sans text-ink",
             // Map layer, full-bleed behind the overlays. Tapping anywhere on it
-            // reveals (spec §4.1: tap the map or the pill to reveal).
+            // reveals.
             div {
                 class: "absolute inset-0",
                 onclick: move |_| revealed.set(true),
@@ -266,7 +265,7 @@ fn CardView(
     }
 }
 
-/// The done-for-today route (spec §4.5, §4.7): a ✓, "N reviewed · next batch
+/// The done-for-today route: a ✓, "N reviewed · next batch
 /// unlocks tomorrow", and a Back-to-home button that navigates to [`Route::Home`].
 /// `reviewed` rides in as the route's path segment, set when [`Review`] drains.
 #[component]
@@ -306,7 +305,7 @@ mod tests {
 
     #[test]
     fn grade_colours_are_red_orange_green_blue() {
-        // The spec's colour order maps to the palette tokens (§4.1).
+        // Grade colours map red / orange / green / blue to the palette tokens.
         assert_eq!(Grade::Again.bg(), "bg-again");
         assert_eq!(Grade::Hard.bg(), "bg-hard");
         assert_eq!(Grade::Good.bg(), "bg-good");
@@ -315,8 +314,8 @@ mod tests {
 
     #[test]
     fn each_button_grade_maps_to_its_scheduler_grade() {
-        // The wiring issue 08 adds: a tapped button must advance FSRS on the same
-        // grade it shows. A swapped arm here would silently mis-schedule.
+        // A tapped button must advance FSRS on the same grade it shows. A swapped
+        // arm here would silently mis-schedule.
         assert_eq!(
             scheduler::Grade::from(Grade::Again),
             scheduler::Grade::Again

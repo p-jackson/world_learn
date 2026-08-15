@@ -43,7 +43,7 @@ const cleanPalestine = () => [
   feature({ ADM0_A3: 'PSX', TYPE: 'Disputed', NAME: 'Palestine', NAME_LONG: 'Palestine', LABELRANK: 5, POP_EST: 1 }, square(35.2, 31.9, 0.2)),
 ];
 
-// --- inclusion rule (§2.1) --------------------------------------------------
+// --- inclusion rule ----------------------------------------------------------
 test('isDeckFeature: sovereign/country/disputed/indeterminate ride in', () => {
   for (const TYPE of ['Sovereign country', 'Country', 'Disputed', 'Indeterminate']) {
     assert.equal(isDeckFeature({ TYPE, POP_EST: 0 }), true, TYPE);
@@ -55,13 +55,13 @@ test('isDeckFeature: inhabited dependency in, uninhabited dependency out', () =>
   assert.equal(isDeckFeature({ TYPE: 'Dependency', POP_EST: 0 }), false);
 });
 
-// --- common name (§2.3) -----------------------------------------------------
+// --- common name ---------------------------------------------------------
 test('commonName: curated override wins, else NE NAME', () => {
   assert.equal(commonName({ ADM0_A3: 'COD', NAME: 'Dem. Rep. Congo' }), 'DR Congo');
   assert.equal(commonName({ ADM0_A3: 'FRA', NAME: 'France' }), 'France');
 });
 
-// --- mainland selection & bbox (§4.2) --------------------------------------
+// --- mainland selection & bbox -----------------------------------------------
 test('largestPolygon: picks the biggest part of a MultiPolygon', () => {
   const geom = {
     type: 'MultiPolygon',
@@ -150,7 +150,7 @@ test('framingCentroid: projected & inside the mainland part', () => {
   assert.ok(Math.abs(y - -10) < 0.5, `y≈-10 got ${y}`); // lat 10 -> y -10
 });
 
-// --- Palestine handling (§2.2) ---------------------------------------------
+// --- Palestine handling --------------------------------------------------
 test('isPalestineMerged: false when Israel excludes the West Bank', () => {
   const features = [
     feature({ ADM0_A3: 'ISR' }, square(34.8, 31.5, 0.3)), // west of the probes
@@ -240,7 +240,7 @@ test('buildAsset: merged source pulls Palestine from the pse loader', async () =
   assert.ok('PSX' in asset, 'Palestine introduced by the swap');
 });
 
-// --- supplements (§2.1 always-in small states absent from 50m) --------------
+// --- supplements (always-in small states absent from 50m) --------------------
 test('missingSupplements: only codes with no feature yet', () => {
   const features = [feature({ ADM0_A3: 'FRA' }, square(0, 0, 1))];
   assert.deepEqual(missingSupplements(features, ['TUV', 'FRA']), ['TUV']);
@@ -338,7 +338,7 @@ test('archipelago nations frame across the whole chain, not one island (Indonesi
   assert.ok(maxx > 137, `bbox reaches Papua (${maxx})`);
 });
 
-test('contested entities land mid-to-late by LABELRANK (§2.4)', { skip: !existsSync(ASSET) }, async () => {
+test('contested entities land mid-to-late by LABELRANK', { skip: !existsSync(ASSET) }, async () => {
   const asset = JSON.parse(await readFile(ASSET, 'utf8'));
   assert.equal(asset.TWN.labelrank, 3);
   assert.equal(asset.PSX.labelrank, 5);

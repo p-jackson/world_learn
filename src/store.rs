@@ -1,4 +1,4 @@
-//! Durable review-state store (spec §5.1, §6).
+//! Durable review-state store.
 //!
 //! One sparse serde-JSON file the app reads at launch and rewrites after every
 //! grade. Loading a missing file yields defaults; saving is atomic (temp file in
@@ -6,11 +6,11 @@
 //! data. The iOS sandbox path is resolved separately (see [`app_support_dir`]);
 //! the store itself is platform-agnostic and takes a directory, so the
 //! serde/atomic-write logic is unit-testable off-device.
-//!
-//! The app shell now wires `Store` into launch, grading, and Settings, but a few
-//! reserved bits of its surface (e.g. [`Store::path`], used only in tests) still
-//! read as dead code to a plain `cargo build`. Allowed module-wide rather than per
-//! item.
+
+// The app shell now wires `Store` into launch, grading, and Settings, but a few
+// reserved bits of its surface (e.g. `Store::path`, used only in tests) still
+// read as dead code to a plain `cargo build`. Allowed module-wide rather than per
+// item.
 #![expect(
     dead_code,
     reason = "a few reserved items (e.g. Store::path) are only used in tests"
@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 /// Current on-disk schema. Migration path is load-all/save-all; only v1 exists.
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// Spec §4.4 default: new Cards introduced per day.
+/// Default: new Cards introduced per day.
 pub const DEFAULT_NEW_CARDS_PER_DAY: u32 = 10;
 
 /// File name inside the store directory.
@@ -36,7 +36,7 @@ const STATE_FILE: &str = "review_state.json";
 /// Sibling temp file `save` writes before renaming over [`STATE_FILE`].
 const TEMP_FILE: &str = "review_state.json.tmp";
 
-/// The whole persisted document (spec §5.1). `cards` is sparse — it holds only
+/// The whole persisted document. `cards` is sparse — it holds only
 /// Cards that have left "new"; an absent `ADM0_A3` key is a not-yet-introduced
 /// Card. Lifecycle status is derived at runtime, never stored.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,13 +48,13 @@ pub struct ReviewState {
     pub cards: BTreeMap<String, CardRecord>,
 }
 
-/// The only interactive setting (spec §4.4).
+/// The only interactive setting.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub new_cards_per_day: u32,
 }
 
-/// One seen Card's persisted state (spec §5.1). FSRS memory fields are inline,
+/// One seen Card's persisted state. FSRS memory fields are inline,
 /// not nested; the app owns the three local-date fields. Dates are day-precision
 /// local dates ([`jiff::civil::Date`]), which serialize as `YYYY-MM-DD` — the
 /// type validates the calendar date at the serde boundary, so a malformed date
@@ -105,8 +105,8 @@ pub struct Store {
 }
 
 impl Store {
-    /// Open the store in the iOS Application Support directory (spec §6),
-    /// creating it on first launch. Wired into app launch by a later issue.
+    /// Open the store in the iOS Application Support directory, creating it on
+    /// first launch.
     pub fn open_default() -> Result<Self> {
         Self::open_in(app_support_dir()?)
     }
@@ -149,8 +149,8 @@ impl Store {
         Ok(state)
     }
 
-    /// Persist a new value for the daily new-Card cap (spec §4.4 — the only
-    /// interactive setting), preserving every Card record. Loads the current
+    /// Persist a new value for the daily new-Card cap (the only interactive
+    /// setting), preserving every Card record. Loads the current
     /// document, replaces the one field, and saves atomically; returns the
     /// persisted state so the caller can reflect it without a reload.
     pub fn set_new_cards_per_day(&self, new_cards_per_day: u32) -> Result<ReviewState> {
@@ -178,7 +178,7 @@ impl Store {
 }
 
 /// Resolve the iOS Application Support directory for this app, creating it on
-/// first launch (spec §6).
+/// first launch.
 ///
 /// This is the one unavoidable platform-specific piece: the `dirs` /
 /// `directories` / `dioxus-sdk` crates resolve iOS wrong (they fall back to
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_the_spec_5_1_shape() {
+    fn parses_the_persisted_json_shape() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open_in(dir.path()).unwrap();
         let json = r#"{

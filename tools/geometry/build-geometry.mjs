@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Dev-only build step (spec §3.3). Turns Natural Earth admin-0 into the static
-// geometry asset the app ships and renders from: assets/geometry.json, a flat
-// map keyed by ADM0_A3. This script never ships in the app build.
+// Dev-only build step. Turns Natural Earth admin-0 into the static geometry
+// asset the app ships and renders from: assets/geometry.json, a flat map keyed
+// by ADM0_A3. This script never ships in the app build.
 //
 //   node build-geometry.mjs          # fetch (cached) -> write asset
 //   npm run build                    # same, from tools/geometry/
@@ -21,8 +21,8 @@ const OUTPUT = join(REPO, 'assets', 'geometry.json');
 const MARTYNAFFORD = '0b9a6ceb0a7032713abd9460ac1e995a9c60cd1e';
 const NVKELSO = 'ca96624a56bd078437bca8184e78163e5039ad19';
 
-// Full-attribute NE 50m admin-0 (spec §3.1) — not the attribute-stripped
-// world-atlas TopoJSON. martynafford's GeoJSON ships the full property set.
+// Full-attribute NE 50m admin-0 — not the attribute-stripped world-atlas
+// TopoJSON. martynafford's GeoJSON ships the full property set.
 const BASE_URL =
   `https://raw.githubusercontent.com/martynafford/natural-earth-geojson/${MARTYNAFFORD}/50m/cultural/ne_50m_admin_0_countries.json`;
 // 10m admin-0, source for entities NE drops at 50m (Tuvalu). Same provider as
@@ -30,8 +30,8 @@ const BASE_URL =
 // missing from the base.
 const TENM_URL =
   `https://raw.githubusercontent.com/martynafford/natural-earth-geojson/${MARTYNAFFORD}/10m/cultural/ne_10m_admin_0_countries.json`;
-// Palestine point-of-view file (spec §2.2), only fetched if the base is merged.
-// NE's actual filename is `_pse` (the spec's `_ps` is shorthand).
+// Palestine point-of-view file, only fetched if the base is merged. NE's actual
+// filename is `_pse`.
 const PSE_URL =
   `https://raw.githubusercontent.com/nvkelso/natural-earth-vector/${NVKELSO}/geojson/ne_10m_admin_0_countries_pse.geojson`;
 

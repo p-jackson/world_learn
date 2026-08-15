@@ -1,4 +1,4 @@
-// Pure transforms for the geometry asset pipeline (spec §2, §3, §4.2).
+// Pure transforms for the geometry asset pipeline.
 // No I/O here — `build-geometry.mjs` owns fetching/writing; these functions are
 // what the unit tests exercise.
 import {
@@ -18,8 +18,8 @@ import {
 
 // Equirectangular (Plate Carrée) tuned so projected x == lon and y == -lat
 // (SVG y grows downward). Coordinates land in degree units, so bounding boxes
-// are trivial and per-Card zoom is a pure viewBox swap (spec §3.2). The
-// per-entity cos(lat) correction happens later at render time, not here.
+// are trivial and per-Card zoom is a pure viewBox swap. The per-entity cos(lat)
+// correction happens later at render time, not here.
 export const DEGREES_PER_RADIAN = 180 / Math.PI;
 export function makeProjection() {
   return geoEquirectangular().scale(DEGREES_PER_RADIAN).translate([0, 0]);
@@ -29,8 +29,8 @@ function round2(v) {
   return Math.round(v * 100) / 100;
 }
 
-// Inclusion rule (spec §2.1): every feature except the two uninhabited
-// dependencies. Data-derived, never a hand-typed list.
+// Inclusion rule: every feature except the two uninhabited dependencies.
+// Data-derived, never a hand-typed list.
 export function isDeckFeature(props) {
   if (INCLUDED_TYPES.has(props.TYPE)) return true;
   if (props.TYPE === 'Dependency' && props.POP_EST > 0) return true;
@@ -54,7 +54,7 @@ function polygonsOf(geometry) {
   return [{ type: 'Polygon', coordinates: geometry.coordinates }];
 }
 
-// The largest-area polygon of a feature — the "mainland" (spec §4.2). Framing
+// The largest-area polygon of a feature — the "mainland". Framing
 // and the pin use this so multi-part features (France + French Guiana, USA +
 // Alaska) don't blow the bbox out to an ocean-spanning box.
 export function largestPolygon(geometry) {
@@ -72,7 +72,7 @@ export function largestPolygon(geometry) {
 }
 
 // A polygon holding more than this share of a feature's area counts as its lone
-// mainland (spec §4.2). Above it, exclaves frame off the mainland (USA→Alaska,
+// mainland. Above it, exclaves frame off the mainland (USA→Alaska,
 // France→French Guiana); at or below it no polygon holds a majority, so the
 // feature is a true archipelago and frames off its major islands instead.
 export const DOMINANT_AREA_FRACTION = 0.5;
@@ -82,7 +82,7 @@ export const DOMINANT_AREA_FRACTION = 0.5;
 // reef does not stretch the window).
 export const ARCHIPELAGO_AREA_RATIO = 10;
 
-// The polygons a feature frames off (spec §4.2). A feature with a dominant
+// The polygons a feature frames off. A feature with a dominant
 // mainland frames off that one polygon (so distant exclaves never blow the bbox
 // out); an archipelago with no majority island frames off every island within
 // an order of magnitude of its largest.
@@ -125,7 +125,7 @@ export function framingCentroid(geometry) {
   return [round2(lon), round2(-lat)];
 }
 
-// One asset entry for a feature (spec §3.3 step 4).
+// One asset entry for a feature.
 export function buildEntity(feature, path) {
   const p = feature.properties;
   return {
@@ -142,7 +142,7 @@ export function buildEntity(feature, path) {
 const byAdm0A3 = (features, a3) =>
   features.find((f) => f.properties.ADM0_A3 === a3);
 
-// Detect whether the source folds Palestine into Israel (spec §2.2). True when
+// Detect whether the source folds Palestine into Israel. True when
 // there is no separate Palestine feature, or when the Israel polygon still
 // covers the West Bank / Gaza.
 export function isPalestineMerged(features) {
@@ -154,7 +154,7 @@ export function isPalestineMerged(features) {
 }
 
 // Swap the clean Palestine polygon and the Israel-without-it in over the merged
-// Israel, sourced from the `pse` point-of-view file (spec §2.2). Geometry only —
+// Israel, sourced from the `pse` point-of-view file. Geometry only —
 // the base attributes (TYPE, POP_EST, LABELRANK, names) are preserved so
 // downstream rules are unaffected. Returns a new feature array.
 export function applyPalestineSwap(baseFeatures, pseFeatures) {
@@ -180,7 +180,7 @@ export function missingSupplements(features, codes) {
 }
 
 // Append the named entities, sourced from the 10m features, to the base set
-// (spec §2.1 always-in). Attributes come straight from 10m — these entities are
+// (always-in). Attributes come straight from 10m — these entities are
 // absent from 50m, so there is nothing to preserve. Returns a new array.
 export function applySupplements(baseFeatures, tenMFeatures, codes) {
   const add = codes.map((code) => {

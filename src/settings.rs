@@ -1,6 +1,5 @@
-//! The Settings route (spec §4.4, §4.7): the new-cards/day stepper — the only
-//! interactive control — plus two read-only rows (Scheduler, Deck) and a back
-//! link to Home.
+//! The Settings route: the new-cards/day stepper — the only interactive control —
+//! plus two read-only rows (Scheduler, Deck) and a back link to Home.
 //!
 //! The stepper's value loads from the store once at mount; each `+`/`−` writes it
 //! straight back through the store (the single source of truth), so Home re-reads
@@ -36,8 +35,8 @@ pub fn Settings() -> Element {
         }
     });
 
-    // Set the value and persist it. Surfaces a write failure to the log (AGENTS.md)
-    // but keeps the UI responsive; the on-screen number always reflects the intent.
+    // Set the value and persist it. Surfaces a write failure to the log but keeps
+    // the UI responsive; the on-screen number always reflects the intent.
     // `Clone` (the Store is cheap to clone, the Signal is Copy) so each stepper
     // button gets its own handle.
     let commit = move |n: u32| {
@@ -87,7 +86,7 @@ pub fn Settings() -> Element {
                 }
             }
 
-            // Read-only rows (spec §4.4).
+            // Read-only rows.
             div { class: "mt-4 rounded-2xl bg-panel",
                 ReadonlyRow { label: "Scheduler", value: "FSRS".to_string() }
                 div { class: "mx-5 h-px bg-line" }
@@ -97,7 +96,7 @@ pub fn Settings() -> Element {
     }
 }
 
-/// A non-interactive Settings row: a label with a dim value (spec §4.4).
+/// A non-interactive Settings row: a label with a dim value.
 #[component]
 fn ReadonlyRow(label: String, value: String) -> Element {
     rsx! {

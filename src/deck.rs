@@ -1,18 +1,18 @@
-//! The in-memory Deck the rest of the app iterates (spec §2, §5.2).
+//! The in-memory Deck the rest of the app iterates.
 //!
 //! Loads the static geometry asset (`assets/geometry.json`, built by
 //! `tools/geometry`) once at runtime and exposes its Entities as Cards in the
 //! fixed big→obscure introduction order: `LABELRANK` ascending, tiebreak
-//! `POP_EST` descending (§2.4). New Cards always enter in this order, and every
-//! screen shares the one ordering.
+//! `POP_EST` descending. New Cards always enter in this order, and every screen
+//! shares the one ordering.
 //!
 //! Deck membership and order are derived purely from the asset — nothing here is
-//! persisted (§5.2). The asset is already filtered to exactly the Deck features
-//! by the build pipeline (issue 01), so loading is: parse, sort, index.
-//!
-//! Like [`crate::store`], this module lands ahead of its first UI caller, so its
-//! public surface reads as dead code until the app shell consumes it. Allowed
-//! module-wide; drop the allow once a screen iterates the Deck.
+//! persisted. The asset is already filtered to exactly the Deck features by the
+//! build pipeline, so loading is: parse, sort, index.
+
+// Like `crate::store`, this module lands ahead of its first UI caller, so its
+// public surface reads as dead code until the app shell consumes it. Allowed
+// module-wide; drop the allow once a screen iterates the Deck.
 #![expect(
     dead_code,
     reason = "public surface lands ahead of its first UI caller"
@@ -28,24 +28,24 @@ use serde::Deserialize;
 /// The geometry asset, embedded at compile time. Parsed once by [`Deck::load`].
 const GEOMETRY_JSON: &str = include_str!("../assets/geometry.json");
 
-/// One map feature's static data, as emitted by the geometry pipeline (§3.3).
+/// One map feature's static data, as emitted by the geometry pipeline.
 /// Keyed externally by its `ADM0_A3` code (see [`Card::code`]); the code is not
 /// a field here because the asset stores it as the map key.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Entity {
-    /// Curated common name — the reveal's primary line (§2.3).
+    /// Curated common name — the reveal's primary line.
     pub name: String,
-    /// Formal `NAME_LONG` — the reveal's secondary line (§2.3).
+    /// Formal `NAME_LONG` — the reveal's secondary line.
     pub name_long: String,
-    /// SVG path in projected coordinates (§3.3), rendered by the map component.
+    /// SVG path in projected coordinates, rendered by the map component.
     pub d: String,
-    /// `[minx, miny, maxx, maxy]` in projected coordinates; drives framing (§4.2).
+    /// `[minx, miny, maxx, maxy]` in projected coordinates; drives framing.
     pub bbox: [f64; 4],
-    /// NE label-prominence signal, lower = more prominent — primary sort key (§2.4).
+    /// NE label-prominence signal, lower = more prominent — primary sort key.
     pub labelrank: u32,
-    /// NE population estimate — sort tiebreak (§2.4).
+    /// NE population estimate — sort tiebreak.
     pub pop_est: u64,
-    /// `[x, y]` in projected coordinates; the reveal drops its pin here (§4.1).
+    /// `[x, y]` in projected coordinates; the reveal drops its pin here.
     pub centroid: [f64; 2],
 }
 
@@ -58,9 +58,9 @@ pub struct Card {
     pub entity: Entity,
 }
 
-/// The full set of Cards in fixed introduction order (§2.4). Build once with
+/// The full set of Cards in fixed introduction order. Build once with
 /// [`Deck::load`] and share it; membership and order are derived from the asset
-/// alone and never persisted (§5.2).
+/// alone and never persisted.
 pub struct Deck {
     /// Cards in intro order — `LABELRANK` asc, tiebreak `POP_EST` desc.
     cards: Vec<Card>,
@@ -85,7 +85,7 @@ impl Deck {
             .into_iter()
             .map(|(code, entity)| Card { code, entity })
             .collect();
-        // §2.4: LABELRANK ascending (lower = more prominent), tiebreak POP_EST
+        // LABELRANK ascending (lower = more prominent), tiebreak POP_EST
         // descending.
         cards.sort_by(|a, b| {
             a.entity
@@ -111,7 +111,7 @@ impl Deck {
         self.cards.is_empty()
     }
 
-    /// The Cards in fixed introduction order (§2.4).
+    /// The Cards in fixed introduction order.
     pub fn cards(&self) -> &[Card] {
         &self.cards
     }
@@ -183,7 +183,7 @@ mod tests {
     fn loads_the_full_deck() {
         let deck = Deck::load().unwrap();
         // 240, not 239: the rule over NE 50m yields 239; Tuvalu is too small for
-        // 50m and is supplemented from 10m (§2.1, issue 01). Kept in lockstep
+        // 50m and is supplemented from 10m. Kept in lockstep
         // with the asset by store.rs's snapshot tripwire.
         assert_eq!(deck.len(), 240);
     }
@@ -230,7 +230,7 @@ mod tests {
     fn contested_entities_land_mid_to_late() {
         let deck = Deck::load().unwrap();
 
-        // Data tripwire: the intro-order feel (§2.4) rests on these LABELRANKs.
+        // Data tripwire: the intro-order feel rests on these LABELRANKs.
         let lr = |code| deck.get(code).unwrap().entity.labelrank;
         assert_eq!(lr("TWN"), 3, "Taiwan");
         assert_eq!(lr("PSX"), 5, "Palestine");
@@ -262,14 +262,14 @@ mod tests {
 
     #[test]
     fn famous_small_nations_are_not_buried_by_pure_population() {
-        // §2.4's rejected alternative: pure POP_EST-desc "buries famous-small
+        // A rejected alternative: pure POP_EST-desc "buries famous-small
         // nations". LABELRANK rescues them. Iceland is the clean case against the
         // shipped asset — a genuinely small nation (~340k) that a pure-population
         // sort drops deep into the tail, but LABELRANK surfaces into the Deck's
         // leading half. New Zealand rides along as a second famous nation
         // pure-pop pushes far down (its population isn't small, but the rescue
-        // is the same shape). NB the issue's literal example, Vatican/Nauru, does
-        // NOT hold: both carry LABELRANK 6, so LABELRANK buries them at the tail
+        // is the same shape). NB the obvious example, Vatican/Nauru, does NOT
+        // hold: both carry LABELRANK 6, so LABELRANK buries them at the tail
         // just as hard as population would — they are not a valid rescue case.
         let deck = Deck::load().unwrap();
 

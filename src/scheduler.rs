@@ -1,4 +1,4 @@
-//! FSRS scheduling — the pure "advance one Card on a grade" step (spec §5.3, §5.4).
+//! FSRS scheduling — the pure "advance one Card on a grade" step.
 //!
 //! Wraps the `fsrs` crate with the app's fixed policy: stock `DEFAULT_PARAMETERS`
 //! (no training), `desired_retention = 0.9`, and the app-owned date granularity
@@ -16,10 +16,10 @@ use jiff::ToSpan;
 
 use crate::store::CardRecord;
 
-/// Fixed target retention (spec §5.3). Stored as a code constant, never persisted.
+/// Fixed target retention. Stored as a code constant, never persisted.
 pub const DESIRED_RETENTION: f32 = 0.9;
 
-/// The learner's self-assessed 4-button grade (spec §4.1). Maps to FSRS ratings
+/// The learner's self-assessed 4-button grade. Maps to FSRS ratings
 /// 1–4; **Again** is the only failing grade and the only one that re-drills.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Grade {
@@ -30,8 +30,8 @@ pub enum Grade {
 }
 
 impl Grade {
-    /// Whether this grade re-drills the Card within the session (spec §5.4): only
-    /// **Again**. Passes exit the Card.
+    /// Whether this grade re-drills the Card within the session: only **Again**.
+    /// Passes exit the Card.
     #[must_use]
     pub const fn is_again(self) -> bool {
         matches!(self, Self::Again)
@@ -51,8 +51,8 @@ impl Default for Scheduler {
 }
 
 impl Scheduler {
-    /// A scheduler over stock `DEFAULT_PARAMETERS` (spec §5.3). `FSRS::default()`
-    /// fills in the FSRS-6 / Anki defaults — no per-user training in the MVP.
+    /// A scheduler over stock `DEFAULT_PARAMETERS`. `FSRS::default()` fills in the
+    /// FSRS-6 / Anki defaults — no per-user training in the MVP.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -60,7 +60,7 @@ impl Scheduler {
         }
     }
 
-    /// Advance a Card one grade and return its next persisted record (spec §5.4).
+    /// Advance a Card one grade and return its next persisted record.
     ///
     /// `prior` is the Card's current record, or `None` for its first-ever grade (a
     /// still-new Card). On a first grade the record is created and stamped
@@ -80,8 +80,8 @@ impl Scheduler {
         today: Date,
     ) -> Result<CardRecord> {
         let current = prior.map(memory_state);
-        // Spec §5.4: days_elapsed = max(0, today − last_review); a new Card's first
-        // grade passes days_elapsed = 0 (with current = None).
+        // days_elapsed = max(0, today − last_review); a new Card's first grade
+        // passes days_elapsed = 0 (with current = None).
         let days_elapsed = prior.map_or(0, |r| {
             u32::try_from((today - r.last_review).get_days().max(0)).unwrap_or(0)
         });
@@ -123,9 +123,9 @@ const fn memory_state(record: &CardRecord) -> MemoryState {
     }
 }
 
-/// Spec §5.4: `interval.round().max(1.0)`. FSRS returns raw fractional days; the
-/// app owns whole-day granularity. `interval` is a positive, finite day count, so
-/// the round-then-clamp keeps the unavoidable float→int cast in range.
+/// `interval.round().max(1.0)`. FSRS returns raw fractional days; the app owns
+/// whole-day granularity. `interval` is a positive, finite day count, so the
+/// round-then-clamp keeps the unavoidable float→int cast in range.
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,

@@ -22,8 +22,8 @@ const FAVICON: Asset = asset!("/assets/favicon.ico");
 // automatic Tailwind). All styling is utility classes; there is no bespoke CSS.
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 
-/// The app's four screens and their transitions (spec §4.7): Home → Review → Done
-/// → Home, and Home ⇄ Settings. [`Shell`] is the outlet layout every screen renders
+/// The app's four screens and their transitions: Home → Review → Done → Home,
+/// and Home ⇄ Settings. [`Shell`] is the outlet layout every screen renders
 /// into. [`Done`] carries the reviewed count as a path segment, set when the Review
 /// queue drains.
 ///
@@ -48,20 +48,19 @@ fn main() {
     // Route tracing output to the platform log. On iOS the fmt subscriber writes
     // to stdout, which `dx serve --ios` and Xcode capture. `dioxus::launch` also
     // auto-inits this, but doing it here first covers any pre-launch logging and
-    // makes the setup explicit. See AGENTS.md "Error handling" for how errors are
-    // given context and logged at the app boundary.
+    // makes the setup explicit.
     dioxus::logger::initialize_default();
 
-    // Full-bleed presentation (spec §3.3/§4.1): paint the `body` the ocean colour
-    // so any exposed safe-area band reads as dark ocean, not the default white.
-    // The colour mirrors `--color-ocean` in assets/tailwind.css; kept as a literal
-    // since this runs before that stylesheet loads.
+    // Full-bleed presentation: paint the `body` the ocean colour so any exposed
+    // safe-area band reads as dark ocean, not the default white. The colour
+    // mirrors `--color-ocean` in assets/tailwind.css; kept as a literal since this
+    // runs before that stylesheet loads.
     //
     // The `viewport-fit=cover` meta is aspirational: WKWebView still insets the
     // layout viewport by the bottom home-indicator safe area, so the map does not
     // actually render into that strip (the ocean `body` colour fills it instead).
-    // Making the map truly reach the home indicator needs a native WKWebView tweak
-    // — see .scratch/mvp-build/issues/19-map-into-bottom-safe-area.md.
+    // Making the map truly reach the home indicator needs a native WKWebView tweak,
+    // deferred for now.
     let cfg = dioxus::mobile::Config::new().with_custom_head(
         r#"<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>html, body { background-color: #0f1720; }</style>"#
@@ -82,7 +81,7 @@ fn app_setup() -> anyhow::Result<(SharedDeck, Store)> {
 #[component]
 fn App() -> Element {
     // Resolve setup once. On failure, log the full chain and surface it rather than
-    // launching into a broken loop (AGENTS.md error handling).
+    // launching into a broken loop.
     let setup = use_hook(|| app_setup().map_err(|e| log_and_display(&e)));
 
     rsx! {
@@ -107,8 +106,8 @@ fn AppRouter(deck: SharedDeck, store: Store) -> Element {
     rsx! { Router::<Route> {} }
 }
 
-/// The router outlet layout (spec ticket 09): a full-size ground the per-screen
-/// content fills. Kept minimal — each screen owns its own chrome.
+/// The router outlet layout: a full-size ground the per-screen content fills.
+/// Kept minimal — each screen owns its own chrome.
 #[component]
 fn Shell() -> Element {
     rsx! {

@@ -1,11 +1,11 @@
-//! Session & derivation — the runtime lifecycle the Review loop drives (spec §5.2, §5.4).
+//! Session & derivation — the runtime lifecycle the Review loop drives.
 //!
 //! Everything about a Card's lifecycle is *derived* from the persisted store plus
-//! today's date, never stored (spec §5.2): which Cards are due, how many new Cards
-//! today's cap still allows, and the order they enter. [`build_queue`] composes
-//! those into the transient session queue; [`Session`] then walks that queue,
-//! grading each Card through the [`Scheduler`], persisting atomically after every
-//! grade, and requeueing an **Again** to the back until it passes.
+//! today's date, never stored: which Cards are due, how many new Cards today's cap
+//! still allows, and the order they enter. [`build_queue`] composes those into the
+//! transient session queue; [`Session`] then walks that queue, grading each Card
+//! through the [`Scheduler`], persisting atomically after every grade, and
+//! requeueing an **Again** to the back until it passes.
 //!
 //! The derivation functions ([`status`], [`new_backlog`], [`new_allowance`],
 //! [`due_cards`], [`build_queue`], [`counts`]) are pure over
@@ -13,12 +13,13 @@
 //! [`Session`] adds the store and the mutable queue on top.
 //!
 //! The screens now consume most of this (Home reads [`counts`], Review drives a
-//! [`Session`]), but a few spec-complete derivations — e.g. per-Card [`status`] —
-//! aren't surfaced by any screen yet, so the module keeps `dead_code` allowed.
-//! `expect` (over `allow`) doesn't work here: the unit tests below call the
-//! otherwise-dead items, so the lint fires in a plain build but not one that
-//! includes `--all-targets`'s test target, and `expect` can't be simultaneously
-//! fulfilled in both.
+//! [`Session`]), but a few derivations — e.g. per-Card [`status`] — aren't
+//! surfaced by any screen yet, so the module keeps `dead_code` allowed.
+
+// `expect` (over `allow`) doesn't work here: the unit tests below call the
+// otherwise-dead items, so the lint fires in a plain build but not one that
+// includes `--all-targets`'s test target, and `expect` can't be simultaneously
+// fulfilled in both.
 #![allow(dead_code)]
 
 use std::collections::VecDeque;
@@ -30,8 +31,8 @@ use crate::deck::{Card, Deck, SharedDeck};
 use crate::scheduler::{Grade, Scheduler};
 use crate::store::{ReviewState, Store};
 
-/// A Card's derived lifecycle status (spec §5.2) — never persisted. `new` if the
-/// store has no record; else `due` when `due ≤ today`, else `scheduled`.
+/// A Card's derived lifecycle status — never persisted. `new` if the store has no
+/// record; else `due` when `due ≤ today`, else `scheduled`.
 /// ("Learning" isn't a separate state — it's a seen Card sitting at `due = today`.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -40,7 +41,6 @@ pub enum Status {
     Scheduled,
 }
 
-/// Derived status of `code` today (spec §5.2).
 #[must_use]
 pub fn status(state: &ReviewState, code: &str, today: Date) -> Status {
     match state.cards.get(code) {
@@ -50,7 +50,7 @@ pub fn status(state: &ReviewState, code: &str, today: Date) -> Status {
     }
 }
 
-/// New backlog (spec §5.2): deck keys minus seen keys, in intro order. These are
+/// New backlog: deck keys minus seen keys, in intro order. These are
 /// the Cards that have never been graded, ready to be introduced up to the cap.
 #[must_use]
 pub fn new_backlog<'d>(state: &ReviewState, deck: &'d Deck) -> Vec<&'d Card> {
@@ -60,7 +60,7 @@ pub fn new_backlog<'d>(state: &ReviewState, deck: &'d Deck) -> Vec<&'d Card> {
         .collect()
 }
 
-/// New allowance remaining today (spec §5.2): `new_cards_per_day` minus the count
+/// New allowance remaining today: `new_cards_per_day` minus the count
 /// of Cards already introduced today. Saturates at 0 so the cap is never exceeded
 /// even if the setting is lowered mid-day below the count already introduced.
 #[must_use]
@@ -77,7 +77,7 @@ pub fn new_allowance(state: &ReviewState, today: Date) -> u32 {
         .saturating_sub(introduced_today)
 }
 
-/// Due set (spec §5.2): seen Cards with `due ≤ today`, in intro order.
+/// Due set: seen Cards with `due ≤ today`, in intro order.
 #[must_use]
 pub fn due_cards<'d>(state: &ReviewState, deck: &'d Deck, today: Date) -> Vec<&'d Card> {
     deck.cards()
@@ -86,7 +86,7 @@ pub fn due_cards<'d>(state: &ReviewState, deck: &'d Deck, today: Date) -> Vec<&'
         .collect()
 }
 
-/// The transient session queue (spec §5.2, §5.4): the due set followed by up to
+/// The transient session queue: the due set followed by up to
 /// the remaining allowance of new Cards, all in intro order. Rebuilt from the
 /// store at each session start, so a lowered cap or a new day is reflected without
 /// any stored session state.
@@ -100,7 +100,7 @@ pub fn build_queue(state: &ReviewState, deck: &Deck, today: Date) -> Vec<String>
         .collect()
 }
 
-/// The two Home-screen stat tiles (spec §4.3), derived from the store: how many
+/// The two Home-screen stat tiles, derived from the store: how many
 /// seen Cards are due today, and how many new Cards today's cap still admits
 /// (capped again by the backlog that remains). Their sum is the session length —
 /// the `Start · N cards` count — and equals [`build_queue`]'s length.
@@ -115,14 +115,14 @@ pub struct SessionCounts {
 
 impl SessionCounts {
     /// Total Cards a session started now would hold — the `Start · N` count. Home
-    /// shows Start only when this is non-zero; at 0/0 it omits Start (spec §4.3).
+    /// shows Start only when this is non-zero; at 0/0 it omits Start.
     #[must_use]
     pub const fn total(self) -> usize {
         self.due + self.new_today
     }
 }
 
-/// The Home-screen counts for `today` (spec §4.3). Pure over `(state, deck, today)`
+/// The Home-screen counts for `today`. Pure over `(state, deck, today)`
 /// and consistent with [`build_queue`]: `counts(..).total()` equals the queue length
 /// a session started the same instant would have.
 #[must_use]
@@ -134,7 +134,7 @@ pub fn counts(state: &ReviewState, deck: &Deck, today: Date) -> SessionCounts {
     }
 }
 
-/// The local device date (spec §5.4: the day boundary is local midnight). The one
+/// The local device date (the day boundary is local midnight). The one
 /// impure derivation helper — screens capture it once at mount so every grade and
 /// count in a session stamps the same day.
 #[must_use]
@@ -142,7 +142,7 @@ pub fn today_local() -> Date {
     jiff::Zoned::now().date()
 }
 
-/// One review session over a fixed `today` (spec §5.4). Owns the loaded store
+/// One review session over a fixed `today`. Owns the loaded store
 /// state, the transient queue, and the [`Scheduler`]; drives the front→grade loop
 /// the Review screen renders. A session spans one local day — `today` is captured
 /// at [`Session::start`] and every grade stamps it.
@@ -167,7 +167,7 @@ pub struct Session {
 }
 
 impl Session {
-    /// Start a session: load the store and build today's queue (spec §5.2).
+    /// Start a session: load the store and build today's queue.
     pub fn start(deck: SharedDeck, store: Store, today: Date) -> Result<Self> {
         let state = store.load().context("loading store to start session")?;
         let queue: VecDeque<String> = build_queue(&state, &deck, today).into();
@@ -189,8 +189,8 @@ impl Session {
         self.queue.len()
     }
 
-    /// Distinct Cards this session started with (spec §4.1 `i/total`, §4.5 "N
-    /// reviewed"). Fixed at [`Session::start`]; see [`Self::initial_len`].
+    /// Distinct Cards this session started with. Fixed at [`Session::start`]; see
+    /// [`Self::initial_len`].
     #[must_use]
     pub const fn total(&self) -> usize {
         self.initial_len
@@ -205,7 +205,7 @@ impl Session {
         self.initial_len - self.queue.len()
     }
 
-    /// Whether the session queue is drained — the done-for-today state (spec §4.5).
+    /// Whether the session queue is drained — the done-for-today state.
     #[must_use]
     pub fn is_done(&self) -> bool {
         self.queue.is_empty()
@@ -224,7 +224,7 @@ impl Session {
         &self.state
     }
 
-    /// Grade the current Card and advance the session (spec §5.4).
+    /// Grade the current Card and advance the session.
     ///
     /// Advances FSRS state, updates the record, and persists atomically. **Again**
     /// requeues the Card to the back (it re-drills, its persisted `due = today`
@@ -415,7 +415,7 @@ mod tests {
         let c = counts(&state_with(0, BTreeMap::new()), &deck, TODAY);
         assert_eq!(c.due, 0);
         assert_eq!(c.new_today, 0);
-        assert_eq!(c.total(), 0, "0/0 → Home omits Start (spec §4.3)");
+        assert_eq!(c.total(), 0, "0/0 → Home omits Start");
     }
 
     #[test]
@@ -481,7 +481,7 @@ mod tests {
 
     /// The status strip's `total` is fixed for the session and `reviewed` counts
     /// distinct Cards passed — genuine progress — not grade taps: an **Again**
-    /// requeues in place and must not advance it (spec §4.1 `i/total`, §4.5).
+    /// requeues in place and must not advance it.
     #[test]
     fn total_is_fixed_and_reviewed_counts_passes_not_taps() {
         let deck = shared_deck();
@@ -529,8 +529,8 @@ mod tests {
         assert_eq!(reloaded.cards[&code].introduced_on, TODAY);
     }
 
-    /// The daily new-Card cap resets at the local day boundary (spec §5.4): new
-    /// introductions are exhausted for `today` but a later day frees the cap again.
+    /// The daily new-Card cap resets at the local day boundary: new introductions
+    /// are exhausted for `today` but a later day frees the cap again.
     #[test]
     fn new_cap_is_enforced_within_a_day_and_resets_across_the_boundary() {
         let deck = shared_deck();

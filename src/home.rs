@@ -1,13 +1,13 @@
-//! The Home route (spec §4.3, §4.7): the launch surface. Title + tagline, two stat
-//! tiles (reviews-due and new-today, derived from the store), and — when there is
+//! The Home route: the launch surface. Title + tagline, two stat tiles
+//! (reviews-due and new-today, derived from the store), and — when there is
 //! anything to review — the primary `Start · N cards` action. A Settings link sits
 //! below it.
 //!
 //! Counts come from [`session::counts`] over the persisted store and today's date;
 //! the Deck and Store are read from context (provided at the app root). When
 //! nothing is due the tiles read 0/0 and Start is simply absent — no special
-//! re-entry screen (spec §4.3). The route re-mounts on every navigation back, so
-//! the counts always reflect the store as it stands.
+//! re-entry screen. The route re-mounts on every navigation back, so the counts
+//! always reflect the store as it stands.
 
 use dioxus::prelude::*;
 
@@ -16,7 +16,7 @@ use crate::ui::{log_and_display, use_app_context, Failure};
 use crate::Route;
 
 /// The Home route. Derives the launch counts once at mount; a store-load failure
-/// surfaces rather than silently showing 0/0 (AGENTS.md error handling).
+/// surfaces rather than silently showing 0/0.
 #[component]
 pub fn Home() -> Element {
     let (deck, store) = use_app_context();
@@ -51,7 +51,7 @@ fn HomeView(counts: SessionCounts) -> Element {
                 p { class: "mt-1 text-[15px] text-ink-dim", "Learn where every country is." }
             }
 
-            // Two stat tiles: reviews-due and new-today (spec §4.3).
+            // Two stat tiles: reviews-due and new-today.
             div { class: "mt-8 flex gap-3",
                 StatTile { value: counts.due, label: "Reviews due" }
                 StatTile { value: counts.new_today, label: "New today" }
@@ -59,7 +59,7 @@ fn HomeView(counts: SessionCounts) -> Element {
 
             div { class: "flex-1" }
 
-            // Start is present only when something is due or new (spec §4.3).
+            // Start is present only when something is due or new.
             if total > 0 {
                 button {
                     class: "w-full rounded-2xl bg-accent px-6 py-4 text-center text-[17px] \
@@ -78,7 +78,7 @@ fn HomeView(counts: SessionCounts) -> Element {
     }
 }
 
-/// One Home stat tile: a big count over a dim label (spec §4.3).
+/// One Home stat tile: a big count over a dim label.
 #[component]
 fn StatTile(value: usize, label: String) -> Element {
     rsx! {
