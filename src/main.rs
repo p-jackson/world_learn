@@ -15,7 +15,7 @@ use home::Home;
 use review::{Done, Review};
 use settings::Settings;
 use store::Store;
-use ui::Failure;
+use ui::{log_and_display, Failure};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 // Tailwind output, compiled from `tailwind.css` by `dx serve` (Dioxus 0.7
@@ -83,12 +83,7 @@ fn app_setup() -> anyhow::Result<(SharedDeck, Store)> {
 fn App() -> Element {
     // Resolve setup once. On failure, log the full chain and surface it rather than
     // launching into a broken loop (AGENTS.md error handling).
-    let setup = use_hook(|| {
-        app_setup().map_err(|e| {
-            error!("{e:#}");
-            format!("{e:#}")
-        })
-    });
+    let setup = use_hook(|| app_setup().map_err(|e| log_and_display(&e)));
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }

@@ -8,10 +8,6 @@
 //! never-graded Card), a [`Grade`], and today's date, [`Scheduler::review`]
 //! returns the Card's next record. It is a pure function of its inputs — no I/O,
 //! no queue — so [`crate::session`] owns persistence and requeueing.
-//!
-//! Lands one issue ahead of its first UI caller; see [`crate::store`] for the
-//! same dead-code note.
-#![allow(dead_code)]
 
 use anyhow::{Context, Result};
 use fsrs::{ItemState, MemoryState, FSRS};
@@ -130,7 +126,11 @@ const fn memory_state(record: &CardRecord) -> MemoryState {
 /// Spec §5.4: `interval.round().max(1.0)`. FSRS returns raw fractional days; the
 /// app owns whole-day granularity. `interval` is a positive, finite day count, so
 /// the round-then-clamp keeps the unavoidable float→int cast in range.
-#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    reason = "interval is a positive, finite day count"
+)]
 const fn whole_days(interval: f32) -> i64 {
     interval.round().max(1.0).min(i64::MAX as f32) as i64
 }
@@ -158,10 +158,18 @@ mod tests {
     }
 
     #[test]
-    fn whole_days_rounds_and_enforces_min_one() {
+    fn whole_days_clamps_zero_to_the_minimum_of_one() {
         assert_eq!(whole_days(0.0), 1); // min 1, never 0
+    }
+
+    #[test]
+    fn whole_days_rounds_down_below_the_half_day() {
         assert_eq!(whole_days(0.4), 1);
         assert_eq!(whole_days(1.4), 1);
+    }
+
+    #[test]
+    fn whole_days_rounds_up_at_or_above_the_half_day() {
         assert_eq!(whole_days(1.6), 2);
         assert_eq!(whole_days(9.5), 10);
     }

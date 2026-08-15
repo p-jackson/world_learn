@@ -15,6 +15,10 @@
 //! The screens now consume most of this (Home reads [`counts`], Review drives a
 //! [`Session`]), but a few spec-complete derivations — e.g. per-Card [`status`] —
 //! aren't surfaced by any screen yet, so the module keeps `dead_code` allowed.
+//! `expect` (over `allow`) doesn't work here: the unit tests below call the
+//! otherwise-dead items, so the lint fires in a plain build but not one that
+//! includes `--all-targets`'s test target, and `expect` can't be simultaneously
+//! fulfilled in both.
 #![allow(dead_code)]
 
 use std::collections::VecDeque;

@@ -1,6 +1,6 @@
 # 16 — Validate codebase against Rust best practices skill
 
-Status: ready-for-agent
+Status: done
 
 **What's wrong:** No pass has run the `rust-best-practices` skill (or equivalent
 Rust-idioms review) over `src/**`. Want a dedicated audit rather than relying on
@@ -14,6 +14,6 @@ ad hoc review during feature issues.
 
 ## Acceptance
 
-- [ ] Audit run and findings triaged (fixed inline or filed as new issues)
-- [ ] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+- [x] Audit run and findings triaged (fixed inline or filed as new issues)
+- [x] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
       `cargo fmt --check`

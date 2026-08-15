@@ -11,7 +11,10 @@
 //! reserved bits of its surface (e.g. [`Store::path`], used only in tests) still
 //! read as dead code to a plain `cargo build`. Allowed module-wide rather than per
 //! item.
-#![allow(dead_code)]
+#![expect(
+    dead_code,
+    reason = "a few reserved items (e.g. Store::path) are only used in tests"
+)]
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -406,15 +409,7 @@ mod tests {
         keys.keys().cloned().collect()
     }
 
-    /// Tripwire for the store's one unstated invariant: every Card is keyed by
-    /// its `ADM0_A3` code — the same string the geometry asset
-    /// (`assets/geometry.json`) uses for its top-level keys. The serde types
-    /// accept any `String`, so nothing else notices if a bump to the geometry
-    /// data dependency changes the code format (2-letter ISO, lowercase,
-    /// disputed-territory suffixes). Such a change would key freshly-built
-    /// Cards differently from every record already written to a device,
-    /// silently orphaning that history. Fail loudly if any key leaves the
-    /// three-ASCII-uppercase-letter shape the store and scheduler assume.
+    /// [`GEOMETRY_ASSET`]'s tripwire: every key holds the three-ASCII-uppercase-letter shape.
     #[test]
     fn geometry_asset_keys_match_the_adm0_a3_shape() {
         let codes = geometry_asset_codes();

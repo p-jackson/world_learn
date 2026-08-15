@@ -12,7 +12,7 @@
 use dioxus::prelude::*;
 
 use crate::session::{self, SessionCounts};
-use crate::ui::{use_app_context, Failure};
+use crate::ui::{log_and_display, use_app_context, Failure};
 use crate::Route;
 
 /// The Home route. Derives the launch counts once at mount; a store-load failure
@@ -26,10 +26,7 @@ pub fn Home() -> Element {
         store
             .load()
             .map(|state| session::counts(&state, &deck, today))
-            .map_err(|e| {
-                error!("{e:#}");
-                format!("{e:#}")
-            })
+            .map_err(|e| log_and_display(&e))
     });
 
     match counts {

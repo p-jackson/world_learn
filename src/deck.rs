@@ -13,7 +13,10 @@
 //! Like [`crate::store`], this module lands ahead of its first UI caller, so its
 //! public surface reads as dead code until the app shell consumes it. Allowed
 //! module-wide; drop the allow once a screen iterates the Deck.
-#![allow(dead_code)]
+#![expect(
+    dead_code,
+    reason = "public surface lands ahead of its first UI caller"
+)]
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;

@@ -13,6 +13,14 @@ pub fn use_app_context() -> (SharedDeck, Store) {
     (use_context::<SharedDeck>(), use_context::<Store>())
 }
 
+/// Log an [`anyhow::Error`]'s full chain at the app boundary, then flatten it to a
+/// display string (AGENTS.md — modules stay logging-free; screens log once here,
+/// on the way to a [`Failure`]).
+pub fn log_and_display(e: &anyhow::Error) -> String {
+    error!("{e:#}");
+    format!("{e:#}")
+}
+
 /// A full-screen failure notice: a setup or store error surfaced rather than
 /// hidden (AGENTS.md — errors are logged at the boundary and shown, never
 /// swallowed). The caller passes the whole message; the danger styling lives here.

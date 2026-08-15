@@ -23,7 +23,7 @@ use crate::map::WorldMap;
 use crate::scheduler;
 use crate::session::{self, Session};
 use crate::store::Store;
-use crate::ui::{use_app_context, Failure};
+use crate::ui::{log_and_display, use_app_context, Failure};
 use crate::Route;
 
 /// The four FSRS self-grades, in button order (spec §4.1). A presentation-local
@@ -108,10 +108,7 @@ impl QueuePosition {
 /// here, the app boundary, per AGENTS.md). [`Review`] renders the returned `Err`
 /// as an inline failure message rather than launching into a broken loop.
 fn start_session(deck: SharedDeck, store: Store, today: Date) -> Result<Session, String> {
-    Session::start(deck, store, today).map_err(|e| {
-        error!("{e:#}");
-        format!("{e:#}")
-    })
+    Session::start(deck, store, today).map_err(|e| log_and_display(&e))
 }
 
 /// The Review loop route (spec §4.1, §4.5, §4.7): owns the [`Session`] and advances
@@ -330,8 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn queue_position_drives_the_status_strip() {
-        // First of eleven: eleven left, no progress yet, counter reads 1/11.
+    fn first_of_eleven_shows_no_progress_yet() {
         let start = QueuePosition {
             index: 0,
             total: 11,
@@ -339,8 +335,10 @@ mod tests {
         assert_eq!(start.left(), 11);
         assert_eq!(start.percent(), 0);
         assert_eq!(start.counter(), "1/11");
+    }
 
-        // Midway: fewer left, partial bar, 1-based counter.
+    #[test]
+    fn midway_through_eleven_shows_a_partial_bar() {
         let mid = QueuePosition {
             index: 5,
             total: 11,
@@ -348,8 +346,10 @@ mod tests {
         assert_eq!(mid.left(), 6);
         assert_eq!(mid.percent(), 45); // 5/11 → 45%
         assert_eq!(mid.counter(), "6/11");
+    }
 
-        // Last card: one left, bar nearly full, counter reads total/total.
+    #[test]
+    fn last_of_eleven_shows_the_full_counter() {
         let last = QueuePosition {
             index: 10,
             total: 11,
