@@ -18,6 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 
 /// Current on-disk schema. Migration path is load-all/save-all; only v1 exists.
@@ -51,21 +52,22 @@ pub struct Settings {
 }
 
 /// One seen Card's persisted state (spec §5.1). FSRS memory fields are inline,
-/// not nested; the app owns the three local-date fields. Dates are
-/// `YYYY-MM-DD` local-date strings (day precision) — parsing/arithmetic lives in
-/// the scheduling core, not here.
+/// not nested; the app owns the three local-date fields. Dates are day-precision
+/// local dates ([`jiff::civil::Date`]), which serialize as `YYYY-MM-DD` — the
+/// type validates the calendar date at the serde boundary, so a malformed date
+/// is a load error, not a landmine for the scheduling core.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardRecord {
     /// FSRS `MemoryState.stability`.
     pub stability: f32,
     /// FSRS `MemoryState.difficulty`.
     pub difficulty: f32,
-    /// `YYYY-MM-DD`; `≤ today` ⇒ due.
-    pub due: String,
-    /// `YYYY-MM-DD` of the last grade.
-    pub last_review: String,
-    /// `YYYY-MM-DD`, set once on first grade; drives the daily-new cap.
-    pub introduced_on: String,
+    /// `≤ today` ⇒ due.
+    pub due: Date,
+    /// Date of the last grade.
+    pub last_review: Date,
+    /// Set once on first grade; drives the daily-new cap.
+    pub introduced_on: Date,
 }
 
 impl Default for Settings {
@@ -196,14 +198,15 @@ const APP_SUBDIR: &str = "WorldLearn";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
 
     fn sample_card() -> CardRecord {
         CardRecord {
             stability: 3.17,
             difficulty: 5.20,
-            due: "2026-08-16".to_string(),
-            last_review: "2026-08-14".to_string(),
-            introduced_on: "2026-08-10".to_string(),
+            due: date(2026, 8, 16),
+            last_review: date(2026, 8, 14),
+            introduced_on: date(2026, 8, 10),
         }
     }
 
@@ -309,6 +312,32 @@ mod tests {
 
         let err = store.load().unwrap_err();
         // anyhow preserves the underlying serde_json error as the source.
+        assert!(err.downcast_ref::<serde_json::Error>().is_some());
+    }
+
+    #[test]
+    fn malformed_date_is_a_load_error_not_a_silent_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open_in(dir.path()).unwrap();
+        fs::write(
+            store.path(),
+            r#"{
+                "schema_version": 1,
+                "settings": { "new_cards_per_day": 10 },
+                "cards": {
+                    "FRA": {
+                        "stability": 3.17,
+                        "difficulty": 5.20,
+                        "due": "2026-13-40",
+                        "last_review": "2026-08-14",
+                        "introduced_on": "2026-08-10"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let err = store.load().unwrap_err();
         assert!(err.downcast_ref::<serde_json::Error>().is_some());
     }
 
