@@ -9,6 +9,19 @@ dx serve --ios
 Before committing, run the tests for whatever you touched and confirm they pass.
 CI runs these same commands, so a red run locally is a red run in CI.
 
+- **Rust app** — any change under `src/**`, `Cargo.toml`, or `Cargo.lock`:
+
+  ```sh
+  cargo test                                  # unit tests
+  cargo clippy --all-targets -- -D warnings   # lint gate (warnings fail)
+  cargo fmt --check                            # formatting
+  ```
+
+  Host is Apple (`target_vendor = "apple"`), so this compiles the iOS-only
+  `objc2` path too. Touched anything platform-specific? Also confirm the ship
+  target builds: `cargo check --target aarch64-apple-ios`. CI:
+  `.github/workflows/rust.yml`.
+
 - **Geometry pipeline** — any change under `tools/geometry/**` or to
   `assets/geometry.json`:
 

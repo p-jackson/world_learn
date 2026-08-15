@@ -1,0 +1,35 @@
+name: rust
+
+# Format + lint + unit tests for the Rust app (src/**). Runs on macOS so the
+# iOS-only `objc2` Application Support path (target_vendor = "apple") and the
+# aarch64-apple-ios ship target are actually compiled — a Linux runner would
+# cfg out the platform code and never build it.
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rust.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rust.yml'
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      # The app ships to iOS only; make sure the ship target still compiles.
+      - run: cargo check --target aarch64-apple-ios

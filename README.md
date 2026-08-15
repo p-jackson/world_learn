@@ -50,6 +50,29 @@ dx serve --platform desktop
 
 ## Tests
 
+### Rust app
+
+Verify any change under `src/**`, `Cargo.toml`, or `Cargo.lock` before
+committing:
+
+```bash
+cargo test                                  # unit tests
+cargo clippy --all-targets -- -D warnings   # lint gate (warnings fail)
+cargo fmt --check                            # formatting
+```
+
+The dev host is Apple (`target_vendor = "apple"`), so these compile the
+iOS-only `objc2` code paths as well. If you touch anything platform-specific,
+also confirm the ship target builds:
+
+```bash
+cargo check --target aarch64-apple-ios
+```
+
+CI runs the same lint/format/test gate on every push/PR touching those paths,
+on a macOS runner so the Apple paths and the iOS target are exercised (see
+`.github/workflows/rust.yml`).
+
 ### Geometry pipeline
 
 The dev-only geometry pipeline (`tools/geometry` → `assets/geometry.json`) has

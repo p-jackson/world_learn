@@ -70,7 +70,9 @@ pub struct CardRecord {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { new_cards_per_day: DEFAULT_NEW_CARDS_PER_DAY }
+        Self {
+            new_cards_per_day: DEFAULT_NEW_CARDS_PER_DAY,
+        }
     }
 }
 
@@ -152,7 +154,9 @@ impl Store {
     pub fn open_in(dir: impl AsRef<Path>) -> Result<Self, StoreError> {
         let dir = dir.as_ref();
         fs::create_dir_all(dir)?;
-        Ok(Self { path: dir.join(STATE_FILE) })
+        Ok(Self {
+            path: dir.join(STATE_FILE),
+        })
     }
 
     /// Path of the JSON file this store reads and writes.
