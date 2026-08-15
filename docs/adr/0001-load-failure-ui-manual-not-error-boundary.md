@@ -16,6 +16,12 @@ Each matches the `Result` and renders `ui::Failure` on `Err`, logging the full
 flattened string). AGENTS.md: modules stay logging-free; log once at the app
 boundary with the `{:#}` chain.
 
+These are mount-time *render* errors, not effect errors: each load runs
+synchronously inside a `use_hook`/`use_signal` init on the first render, so `?`
+propagates into the render path and `ErrorBoundary` *can* catch it. (An error
+inside `use_effect` could not `?` into render and a boundary would not see it —
+but none of these do that.)
+
 Dioxus 0.7 ships `ErrorBoundary` + `?` (components return
 `Result<Element, RenderError>`, errors caught by the nearest boundary). Issue 20
 asked whether the three sites should adopt it.
