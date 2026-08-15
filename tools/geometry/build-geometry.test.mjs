@@ -8,9 +8,10 @@ import {
   isDeckFeature,
   commonName,
   largestPolygon,
-  mainlandBbox,
+  framingPolygons,
+  framingBbox,
   projectBounds,
-  mainlandCentroid,
+  framingCentroid,
   isPalestineMerged,
   applyPalestineSwap,
   missingSupplements,
@@ -69,14 +70,66 @@ test('largestPolygon: picks the biggest part of a MultiPolygon', () => {
   assert.deepEqual(largestPolygon(geom), square(0, 0, 5));
 });
 
-test('mainlandBbox: ignores the far-flung small part (France + Guiana shape)', () => {
+test('framingPolygons: a dominant mainland frames alone (USA + Alaska shape)', () => {
+  // One polygon holds the majority of the area, so distant exclaves are dropped
+  // and the frame never blows out across an ocean.
+  const geom = {
+    type: 'MultiPolygon',
+    coordinates: [square(0, 0, 5).coordinates, square(-150, 30, 2).coordinates],
+  };
+  assert.deepEqual(framingPolygons(geom), [square(0, 0, 5)]);
+});
+
+test('framingPolygons: a dominant-less archipelago unions its comparable islands', () => {
+  // Three equal islands, none a majority: all frame together so the window
+  // covers the whole nation (Indonesia: Sumatra…Papua), not one island.
+  const geom = {
+    type: 'MultiPolygon',
+    coordinates: [
+      square(0, 0, 3).coordinates,
+      square(20, 0, 3).coordinates,
+      square(40, 0, 3).coordinates,
+    ],
+  };
+  assert.equal(framingPolygons(geom).length, 3);
+});
+
+test('framingPolygons: an archipelago still drops islands an order of magnitude smaller', () => {
+  // Two comparable islands (neither a majority) plus a speck. The speck is > 10×
+  // smaller than the largest, so it is excluded and can't blow out the bbox.
+  const geom = {
+    type: 'MultiPolygon',
+    coordinates: [
+      square(0, 0, 3).coordinates,
+      square(10, 0, 3).coordinates,
+      square(60, 0, 0.3).coordinates,
+    ],
+  };
+  const framed = framingPolygons(geom);
+  assert.equal(framed.length, 2);
+  const [minx, , maxx] = framingBbox(geom);
+  assert.ok(minx > -4 && maxx < 14, `frames the two big islands, not the speck (${minx}..${maxx})`);
+});
+
+test('framingBbox: an archipelago spans all its major islands', () => {
+  // Islands at lon 0 and lon 40 (equal area): the framing bbox reaches both.
+  const geom = {
+    type: 'MultiPolygon',
+    coordinates: [square(0, 0, 3).coordinates, square(40, 0, 3).coordinates],
+  };
+  const [minx, , maxx] = framingBbox(geom);
+  assert.ok(minx < -2, `left island included (${minx})`);
+  assert.ok(maxx > 42, `right island included (${maxx})`);
+});
+
+test('framingBbox: ignores the far-flung small part (France + Guiana shape)', () => {
   const geom = {
     type: 'MultiPolygon',
     coordinates: [square(0, 0, 5).coordinates, square(100, -40, 0.5).coordinates],
   };
   // mainland square lon[-5,5] lat[-5,5] -> projected y flips (symmetric here);
   // spherical edges bulge a hair, so assert closeness, not equality.
-  const [minx, miny, maxx, maxy] = mainlandBbox(geom);
+  const [minx, miny, maxx, maxy] = framingBbox(geom);
   for (const [got, want] of [[minx, -5], [miny, -5], [maxx, 5], [maxy, 5]]) {
     assert.ok(Math.abs(got - want) < 0.1, `${got} ≈ ${want}`);
   }
@@ -87,12 +140,12 @@ test('projectBounds: y is flipped (y = -lat)', () => {
   assert.deepEqual(projectBounds([[10, 20], [30, 40]]), [10, -40, 30, -20]);
 });
 
-test('mainlandCentroid: projected & inside the mainland part', () => {
+test('framingCentroid: projected & inside the mainland part', () => {
   const geom = {
     type: 'MultiPolygon',
     coordinates: [square(20, 10, 5).coordinates, square(120, -50, 0.5).coordinates],
   };
-  const [x, y] = mainlandCentroid(geom);
+  const [x, y] = framingCentroid(geom);
   assert.ok(Math.abs(x - 20) < 0.5, `x≈20 got ${x}`);
   assert.ok(Math.abs(y - -10) < 0.5, `y≈-10 got ${y}`); // lat 10 -> y -10
 });
@@ -274,6 +327,15 @@ test('antimeridian entities are cut, not globe-wrapped (mainland bbox stays loca
     assert.ok(minx < maxx, `${a3} bbox not inverted`);
     assert.ok(maxx - minx < 180, `${a3} mainland span ${maxx - minx} stays local, not globe-wrapped`);
   }
+});
+
+test('archipelago nations frame across the whole chain, not one island (Indonesia)', { skip: !existsSync(ASSET) }, async () => {
+  const asset = JSON.parse(await readFile(ASSET, 'utf8'));
+  // Real Indonesia runs Sumatra (~100°E) to Papua (~137°E); the largest single
+  // island (Kalimantan) alone would frame a narrow window over ~109–119°E.
+  const [minx, , maxx] = asset.IDN.bbox;
+  assert.ok(minx < 100, `bbox reaches Sumatra (${minx})`);
+  assert.ok(maxx > 137, `bbox reaches Papua (${maxx})`);
 });
 
 test('contested entities land mid-to-late by LABELRANK (§2.4)', { skip: !existsSync(ASSET) }, async () => {

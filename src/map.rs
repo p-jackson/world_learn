@@ -12,9 +12,11 @@
 //! world therefore spans x ∈ [-180, 180], y ∈ [-90, 90] — [`WORLD_VIEW_BOX`].
 //!
 //! The highlighted Card's regional zoom is a pure per-Card [`Frame`]: a `viewBox`
-//! swap plus one group `transform` on the single rendered map — no re-projection,
-//! no path re-render (issue 06, spec §3.2/§4.2). With no highlight the map falls
-//! back to [`WORLD_VIEW_BOX`].
+//! swap plus a group `transform` on each rendered copy — no re-projection, no path
+//! re-render (issue 06, spec §3.2/§4.2). The map is drawn three times, the proper
+//! map flanked by a `∓360°` wrap copy either side, so a frame near the ±180°
+//! antimeridian never shows the map's edge (issue 10). With no highlight the map
+//! falls back to [`WORLD_VIEW_BOX`].
 
 use dioxus::prelude::*;
 
@@ -40,11 +42,16 @@ pub fn fill_for(code: &str, highlighted: &str) -> &'static str {
     }
 }
 
-/// Padding multiplier on the mainland bbox → the framed window (spec §4.2).
-const FRAME_PADDING: f64 = 3.4;
-/// Floor on the framed window's span, in projected degrees, so tiny/island
-/// entities get a sane window rather than a pinpoint (§4.2: ~6° bbox → ~20°).
-const MIN_WINDOW_DEG: f64 = 20.0;
+/// Context added around the framing bbox, in projected degrees, on **each** side
+/// (spec §4.2). Additive rather than a multiplier so the country's share of the
+/// window grows with its size: a giant like Russia fills most of the frame while
+/// still showing its neighbours, and a speck like Anguilla floats in a wide
+/// context window — the size-dependent zoom the multiplier couldn't give (a
+/// constant multiplier framed every country to the same fraction, blowing huge
+/// countries out to a near-global squish, issue 10). Pinned so Japan (framing
+/// span ≈ 8.8°) lands at ≈ 30° total, the reference that reads well. The 2×
+/// margin also floors tiny entities at ≈ 21° with no separate minimum.
+const CONTEXT_MARGIN_DEG: f64 = 10.6;
 /// Floor on the cos(lat) x-scale — a degenerate guard for near-polar frame
 /// centres so the transform never collapses the map to a vertical line. No
 /// inhabited Entity's mainland reaches it.
@@ -54,14 +61,23 @@ const MIN_COS_SCALE: f64 = 0.1;
 /// size keeps the pin's apparent size roughly constant across Cards.
 const PIN_SIZE_FRACTION: f64 = 0.06;
 
+/// The world is drawn three times — the map proper plus a wrap copy `∓360°`
+/// either side — so a frame straddling the ±180° antimeridian never shows the
+/// bare edge of the map (issue 10). `(stable key, raw-longitude shift)`; the keys
+/// keep the three groups' node identity fixed across Card changes (Dioxus #2274).
+/// A single frame spans < 180°, so at most one wrap copy is ever on-screen; the
+/// other two sit outside the `viewBox` at no visible cost.
+const WRAP_COPIES: [(&str, f64); 3] = [("wrap-w", -360.0), ("wrap-main", 0.0), ("wrap-e", 360.0)];
+
 /// The regional-zoom framing for one Entity: a square `viewBox` plus a horizontal
-/// cos(lat) correction, both derived from the Entity's **mainland** bbox — the
-/// asset's `bbox`, already the largest polygon, so France frames on the European
-/// mainland, not out across the Atlantic to French Guiana (spec §4.2).
+/// cos(lat) correction, both derived from the Entity's **framing** bbox — the
+/// asset's `bbox`, its mainland (or an archipelago's major islands), so France
+/// frames on the European mainland, not out across the Atlantic to French Guiana
+/// (spec §4.2).
 ///
-/// A Card's zoom is applying this Frame to the one rendered map: [`Self::view_box`]
-/// swaps the `viewBox`, [`Self::transform`] sets one group `transform`. Nothing
-/// re-projects and no `<path>` changes.
+/// A Card's zoom is applying this Frame to the rendered map: [`Self::view_box`]
+/// swaps the `viewBox`, [`Self::transform_shifted`] sets each copy's group
+/// `transform`. Nothing re-projects and no `<path>` changes.
 ///
 /// Fields are the projected-degree geometry (`x = lon`, `y = -lat`); the string
 /// builders format them as SVG attributes.
@@ -81,11 +97,12 @@ pub struct Frame {
 impl Frame {
     /// Frame the mainland `bbox` = `[minx, miny, maxx, maxy]` (projected coords).
     ///
-    /// The window is square and padded around the mainland, floored to a minimum
-    /// span. The longitude extent is compressed by cos(lat) before choosing the
-    /// square side, so the window frames the mainland's real-world footprint (the
-    /// same correction the group transform then applies to the geometry) rather
-    /// than its equirectangular-stretched one.
+    /// The window is square and framed around the bbox with a fixed [context
+    /// margin](CONTEXT_MARGIN_DEG) on each side. The longitude extent is
+    /// compressed by cos(lat) before choosing the square side, so the window
+    /// frames the region's real-world footprint (the same correction the group
+    /// transform then applies to the geometry) rather than its
+    /// equirectangular-stretched one.
     pub fn for_bbox(bbox: [f64; 4]) -> Self {
         let [min_x, min_y, max_x, max_y] = bbox;
         let center_x = f64::midpoint(min_x, max_x);
@@ -94,7 +111,7 @@ impl Frame {
         let scale_x = (-center_y).to_radians().cos().max(MIN_COS_SCALE);
         let corrected_width = (max_x - min_x) * scale_x;
         let height = max_y - min_y;
-        let span = (corrected_width.max(height) * FRAME_PADDING).max(MIN_WINDOW_DEG);
+        let span = 2.0f64.mul_add(CONTEXT_MARGIN_DEG, corrected_width.max(height));
         Self {
             center_x,
             center_y,
@@ -115,12 +132,26 @@ impl Frame {
         )
     }
 
-    /// The group `transform`: scale x by cos(lat) about the frame centre so
-    /// high-latitude entities aren't horizontally stretched (§3.2). This is
-    /// `translate(cx) scale(k) translate(-cx)` collapsed to one translate + scale
-    /// (`x ↦ k·x + cx·(1−k)`), leaving y untouched.
+    /// The group `transform` for the map proper — [`Self::transform_shifted`] with
+    /// no wrap offset. Test-only shorthand; the component builds every copy
+    /// (including the main one) through `transform_shifted`.
+    #[cfg(test)]
     pub fn transform(&self) -> String {
-        let tx = self.center_x * (1.0 - self.scale_x);
+        self.transform_shifted(0.0)
+    }
+
+    /// The group `transform` for a copy of the world shifted `shift` degrees in raw
+    /// longitude: scale x by cos(lat) about the frame centre so high-latitude
+    /// entities aren't horizontally stretched (§3.2), then offset by the wrap
+    /// period. `translate(cx) scale(k) translate(-cx)` collapsed to one translate +
+    /// scale (`x ↦ k·(x + shift) + cx·(1−k)`), leaving y untouched. A frame near the
+    /// ±180° antimeridian would otherwise show the bare edge of the map with an
+    /// ocean void beyond it; drawing the same paths at `shift = ±360` places wrap
+    /// copies either side so context is continuous across the seam (issue 10).
+    pub fn transform_shifted(&self, shift: f64) -> String {
+        let tx = self
+            .scale_x
+            .mul_add(shift, self.center_x * (1.0 - self.scale_x));
         format!(
             "translate({} 0) scale({} 1)",
             svg_num(tx),
@@ -163,19 +194,34 @@ fn svg_num(v: f64) -> String {
     s
 }
 
+/// The group `transform` for one wrap copy at raw-longitude `shift`. A framed
+/// Card carries the cos-correction into every copy ([`Frame::transform_shifted`]);
+/// with no highlight the map is the whole world at natural scale, so a copy is a
+/// plain `∓360°` translate and the map proper (`shift == 0`) needs no transform.
+fn wrap_transform(frame: Option<&Frame>, shift: f64) -> Option<String> {
+    match frame {
+        Some(f) => Some(f.transform_shifted(shift)),
+        None if shift != 0.0 => Some(format!("translate({} 0)", svg_num(shift))),
+        None => None,
+    }
+}
+
 /// The world map with one Entity highlighted. Fills its container (`h-full
 /// w-full`); the caller sizes it (full-bleed on the Review screen).
 ///
-/// Renders all Deck paths once in fixed intro order; only the highlighted Card's
-/// `fill` differs. The boundary stroke is uniform and non-scaling, applied to
+/// Renders all Deck paths in fixed intro order, three times over — the map plus a
+/// wrap copy either side ([`WRAP_COPIES`]) so an antimeridian frame never shows
+/// the map's edge — and only the highlighted Card's `fill` differs. The boundary
+/// stroke is uniform and non-scaling, applied to
 /// every child `<path>` via one Tailwind child-variant on the `<svg>`, so it
 /// stays visible on every Entity in both states independent of `fill` and of the
 /// group's cos-correction scale.
 ///
 /// The highlighted Card's [`Frame`] drives the regional zoom: its `viewBox` swap
-/// and one group `transform`. With no valid highlight the map shows the whole
-/// world ([`WORLD_VIEW_BOX`], no transform). Both are attributes on fixed nodes,
-/// so a Card change re-frames without touching the path tree (Dioxus #2274).
+/// and each copy's group `transform`. With no valid highlight the map shows the
+/// whole world ([`WORLD_VIEW_BOX`], wrap copies at a plain `∓360°`). All are
+/// attributes on fixed nodes, so a Card change re-frames without touching the path
+/// tree (Dioxus #2274).
 ///
 /// When `pin` is set, a 📍 marks the highlighted Card's centroid (the reveal
 /// state, spec §4.1). It renders as a `<text>` *outside* the cos-correction group
@@ -195,7 +241,6 @@ pub fn WorldMap(
     let view_box = frame
         .as_ref()
         .map_or_else(|| WORLD_VIEW_BOX.to_string(), Frame::view_box);
-    let transform = frame.as_ref().map(Frame::transform);
     let pin_marker = frame.as_ref().zip(highlighted_card).map(|(f, card)| {
         let [cx, cy] = card.entity.centroid;
         (
@@ -211,13 +256,16 @@ pub fn WorldMap(
                 [&_path]:[vector-effect:non-scaling-stroke] [&_path]:[stroke-linejoin:round]",
             view_box: "{view_box}",
             preserve_aspect_ratio: "xMidYMid meet",
-            g {
-                transform,
-                for card in deck.cards() {
-                    path {
-                        key: "{card.code}",
-                        d: "{card.entity.d}",
-                        fill: fill_for(&card.code, &highlighted),
+            for (key, shift) in WRAP_COPIES {
+                g {
+                    key: "{key}",
+                    transform: wrap_transform(frame.as_ref(), shift),
+                    for card in deck.cards() {
+                        path {
+                            key: "{card.code}",
+                            d: "{card.entity.d}",
+                            fill: fill_for(&card.code, &highlighted),
+                        }
                     }
                 }
             }
@@ -239,6 +287,10 @@ pub fn WorldMap(
 mod tests {
     use super::*;
     use crate::deck::Deck;
+
+    /// The two context margins a frame adds around the bbox — a local so the
+    /// assertions stay readable and dodge clippy's `mul_add` rewrite of `a*b + c`.
+    const MARGINS: f64 = 2.0 * CONTEXT_MARGIN_DEG;
 
     #[test]
     fn fill_for_marks_only_the_matching_code() {
@@ -267,11 +319,11 @@ mod tests {
     #[test]
     fn frame_centres_a_square_window_on_the_bbox() {
         // Symmetric bbox on the equator (lat 0 → no cos correction): the window is
-        // centred and square, padded by FRAME_PADDING off the larger dimension.
+        // centred and square, the larger dimension plus a context margin each side.
         let frame = Frame::for_bbox([-5.0, -5.0, 5.0, 5.0]);
         let [min_x, min_y, width, height] = parse_view_box(&frame.view_box());
-        approx(width, 34.0); // square, 10° × 3.4 padding
-        approx(height, 34.0);
+        approx(width, 10.0 + MARGINS); // 10° span + margins
+        approx(height, 10.0 + MARGINS);
         approx(min_x + width / 2.0, 0.0); // centred on the bbox
         approx(min_y + height / 2.0, 0.0);
     }
@@ -282,17 +334,33 @@ mod tests {
         let frame = Frame::for_bbox([-30.0, -2.0, 30.0, 2.0]);
         let [_, _, w, h] = parse_view_box(&frame.view_box());
         approx(w, h); // viewBox width equals height
-        approx(w, 60.0 * FRAME_PADDING); // sized off the 60° width
+        approx(w, 60.0 + MARGINS); // sized off the 60° width
     }
 
     #[test]
-    fn frame_enforces_the_minimum_window_for_tiny_entities() {
-        // Nauru-scale bbox (~0.05°): padding alone gives a pinpoint, so the floor
-        // takes over and the window is exactly the minimum span.
-        let frame = Frame::for_bbox([166.91, 0.49, 166.96, 0.55]);
+    fn frame_grows_the_country_share_of_the_window_with_its_size() {
+        // The additive margin (not a multiplier) means a bigger country fills more
+        // of its frame: the span/size ratio shrinks as the country grows.
+        let small = Frame::for_bbox([-4.0, -4.0, 4.0, 4.0]); // 8° span
+        let large = Frame::for_bbox([-40.0, -40.0, 40.0, 40.0]); // 80° span
+        let share = |f: &Frame, size: f64| {
+            let [_, _, w, _] = parse_view_box(&f.view_box());
+            size / w
+        };
+        assert!(
+            share(&large, 80.0) > share(&small, 8.0),
+            "larger country should fill a bigger share of its window"
+        );
+    }
+
+    #[test]
+    fn frame_floors_tiny_entities_at_the_context_margin() {
+        // A pinpoint bbox: with no extent, the window is exactly the two context
+        // margins — a sane wide window, not a zoomed-in speck.
+        let frame = Frame::for_bbox([166.93, 0.52, 166.93, 0.52]);
         let [_, _, w, h] = parse_view_box(&frame.view_box());
-        approx(w, MIN_WINDOW_DEG);
-        approx(h, MIN_WINDOW_DEG);
+        approx(w, MARGINS);
+        approx(h, MARGINS);
     }
 
     #[test]
@@ -311,7 +379,47 @@ mod tests {
         assert_eq!(frame.transform(), "translate(10 0) scale(0.5 1)");
         // Corrected width 20·0.5 = 10 < height 20 → span off the height.
         let [_, _, w, _] = parse_view_box(&frame.view_box());
-        approx(w, 20.0 * FRAME_PADDING);
+        approx(w, 20.0 + MARGINS);
+    }
+
+    #[test]
+    fn wrap_copy_shifts_screen_x_by_the_scaled_period() {
+        // High-latitude frame (k = cos60° = 0.5, base tx = 10): a wrap copy at
+        // ±360° raw longitude lands 360·k = 180 screen units either side, so the
+        // seam is continuous under the same cos-correction the map carries.
+        let frame = Frame::for_bbox([10.0, -70.0, 30.0, -50.0]);
+        assert_eq!(
+            frame.transform_shifted(360.0),
+            "translate(190 0) scale(0.5 1)"
+        );
+        assert_eq!(
+            frame.transform_shifted(-360.0),
+            "translate(-170 0) scale(0.5 1)"
+        );
+        // Offset 0 is exactly the un-shifted transform.
+        assert_eq!(frame.transform_shifted(0.0), frame.transform());
+    }
+
+    #[test]
+    fn wrap_transform_of_the_whole_world_is_a_plain_period_translate() {
+        // No highlight → whole world at natural scale: the map proper needs no
+        // transform, and each wrap copy is just a ∓360° translate.
+        assert_eq!(wrap_transform(None, 0.0), None);
+        assert_eq!(
+            wrap_transform(None, -360.0),
+            Some("translate(-360 0)".into())
+        );
+        assert_eq!(wrap_transform(None, 360.0), Some("translate(360 0)".into()));
+    }
+
+    #[test]
+    fn wrap_copy_shifts_by_the_full_period_at_identity_scale() {
+        // Equator frame (k = 1): the wrap copy is a plain ±360° translate.
+        let frame = Frame::for_bbox([-5.0, -5.0, 5.0, 5.0]);
+        assert_eq!(
+            frame.transform_shifted(360.0),
+            "translate(360 0) scale(1 1)"
+        );
     }
 
     #[test]
@@ -336,13 +444,10 @@ mod tests {
         // Sizing off the span (not a fixed user-unit) keeps the pin's apparent size
         // constant under `meet`: a tiny island's floored window and a wide mainland
         // each get a pin proportional to their own window.
-        let tiny = Frame::for_bbox([166.91, 0.49, 166.96, 0.55]); // floored to MIN_WINDOW_DEG
-        approx(tiny.pin_font_size(), MIN_WINDOW_DEG * PIN_SIZE_FRACTION);
+        let tiny = Frame::for_bbox([166.93, 0.52, 166.93, 0.52]); // floored to the margins
+        approx(tiny.pin_font_size(), MARGINS * PIN_SIZE_FRACTION);
         let wide = Frame::for_bbox([-30.0, -2.0, 30.0, 2.0]);
-        approx(
-            wide.pin_font_size(),
-            60.0 * FRAME_PADDING * PIN_SIZE_FRACTION,
-        );
+        approx(wide.pin_font_size(), (60.0 + MARGINS) * PIN_SIZE_FRACTION);
     }
 
     #[test]
@@ -370,11 +475,28 @@ mod tests {
 
     #[test]
     fn real_deck_gives_a_small_island_a_sane_window() {
-        // Niue: a tiny island floored to the minimum window, not a pinpoint.
+        // Niue: a tiny island framed to a wide context window (≈ the two margins),
+        // not a pinpoint.
         let deck = Deck::load().unwrap();
         let frame = frame_for(&deck, "NIU");
         let [_, _, w, _] = parse_view_box(&frame.view_box());
-        approx(w, MIN_WINDOW_DEG);
+        assert!(
+            (MARGINS..MARGINS + 1.0).contains(&w),
+            "small island frames to ≈ the context margins (span {w})"
+        );
+    }
+
+    #[test]
+    fn real_deck_frames_russia_regionally_not_globally() {
+        // Issue 10: the old multiplier blew Russia's frame out to ≈ 264° (a
+        // near-global horizontal squish). The additive margin keeps it a regional
+        // window well under a third of the globe.
+        let deck = Deck::load().unwrap();
+        let [_, _, w, _] = parse_view_box(&frame_for(&deck, "RUS").view_box());
+        assert!(
+            w < 110.0,
+            "Russia frames regionally, not globally (span {w})"
+        );
     }
 
     #[test]

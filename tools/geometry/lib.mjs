@@ -71,21 +71,57 @@ export function largestPolygon(geometry) {
   return best;
 }
 
+// A polygon holding more than this share of a feature's area counts as its lone
+// mainland (spec §4.2). Above it, exclaves frame off the mainland (USA→Alaska,
+// France→French Guiana); at or below it no polygon holds a majority, so the
+// feature is a true archipelago and frames off its major islands instead.
+export const DOMINANT_AREA_FRACTION = 0.5;
+// For an archipelago, the polygons within this factor of the largest are the
+// "major islands"; anything an order of magnitude smaller is a speck that would
+// only bloat the bbox, so it's excluded (Indonesia keeps Sumatra…Papua; a lone
+// reef does not stretch the window).
+export const ARCHIPELAGO_AREA_RATIO = 10;
+
+// The polygons a feature frames off (spec §4.2). A feature with a dominant
+// mainland frames off that one polygon (so distant exclaves never blow the bbox
+// out); an archipelago with no majority island frames off every island within
+// an order of magnitude of its largest.
+export function framingPolygons(geometry) {
+  const polygons = polygonsOf(geometry);
+  if (polygons.length === 1) return polygons;
+  const areas = polygons.map(geoArea);
+  const total = areas.reduce((sum, a) => sum + a, 0);
+  const max = Math.max(...areas);
+  if (max > total * DOMINANT_AREA_FRACTION) {
+    return [polygons[areas.indexOf(max)]];
+  }
+  return polygons.filter((_, i) => areas[i] * ARCHIPELAGO_AREA_RATIO >= max);
+}
+
+// The framing polygons as one geometry, ready for geoBounds/geoCentroid.
+function framingGeometry(geometry) {
+  const polygons = framingPolygons(geometry);
+  return polygons.length === 1
+    ? polygons[0]
+    : { type: 'MultiPolygon', coordinates: polygons.map((p) => p.coordinates) };
+}
+
 // Project geoBounds output ([[minLon,minLat],[maxLon,maxLat]]) into the asset's
 // coordinate space: [minx, miny, maxx, maxy] with y flipped (y = -lat), rounded.
 export function projectBounds([[minLon, minLat], [maxLon, maxLat]]) {
   return [round2(minLon), round2(-maxLat), round2(maxLon), round2(-minLat)];
 }
 
-// Mainland bbox in projected/rounded coordinates.
-export function mainlandBbox(geometry) {
-  return projectBounds(geoBounds(largestPolygon(geometry)));
+// Framing bbox (the mainland, or an archipelago's major islands) in
+// projected/rounded coordinates.
+export function framingBbox(geometry) {
+  return projectBounds(geoBounds(framingGeometry(geometry)));
 }
 
-// Mainland centroid, projected ([lon, -lat]) and rounded — so a dropped pin
-// lands inside the framed mainland, not pulled offshore by overseas parts.
-export function mainlandCentroid(geometry) {
-  const [lon, lat] = geoCentroid(largestPolygon(geometry));
+// Framing centroid, projected ([lon, -lat]) and rounded — so a dropped pin
+// lands inside the framed region, not pulled offshore by overseas parts.
+export function framingCentroid(geometry) {
+  const [lon, lat] = geoCentroid(framingGeometry(geometry));
   return [round2(lon), round2(-lat)];
 }
 
@@ -96,10 +132,10 @@ export function buildEntity(feature, path) {
     name: commonName(p),
     name_long: p.NAME_LONG,
     d: path(feature),
-    bbox: mainlandBbox(feature.geometry),
+    bbox: framingBbox(feature.geometry),
     labelrank: p.LABELRANK,
     pop_est: p.POP_EST,
-    centroid: mainlandCentroid(feature.geometry),
+    centroid: framingCentroid(feature.geometry),
   };
 }
 
