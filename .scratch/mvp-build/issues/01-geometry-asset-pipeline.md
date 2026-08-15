@@ -14,7 +14,7 @@ Source spec: `.scratch/mvp-spec/spec.md` §2, §3.
 - [x] Common name = NE `NAME` by rule + a small curated override table (~15–25 entries: `W. Sahara`→Western Sahara, `Dem. Rep. Congo`→DR Congo, etc., §2.3)
 - [x] Projected coordinates rounded (~2 dp) to shrink the asset
 - [x] Output is `include_str!`-loadable JSON (or generated `.rs`)
-- [x] Verified: exactly 239 keys; Palestine present as its own entity; antimeridian entities (RUS, FJI, USA/Alaska) are cut correctly, not globe-wrapped
+- [x] Verified: exactly 240 keys (239 from the 50m rule + Tuvalu, see Comments); Palestine present as its own entity; antimeridian entities (RUS, FJI, USA/Alaska) are cut correctly, not globe-wrapped
 
 ## Comments
 
@@ -31,4 +31,4 @@ notes (see `tools/geometry/README.md`):
 Sources pinned to commits for reproducibility. `centroid` = mainland-polygon
 centroid (keeps the reveal pin inside the framed view).
 
-Follow-up: `spec.md`/`CONTEXT.md` still say 239 — update to 240 when convenient.
+Follow-up (resolved): `spec.md`/`CONTEXT.md` now say 240.

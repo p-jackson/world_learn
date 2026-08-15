@@ -7,7 +7,7 @@ Source spec: `.scratch/mvp-spec/spec.md` §3.3, §4.1 (render path only).
 **Blocked by:** 01 (geometry asset).
 
 - [ ] Minimal app scaffold replacing the Dioxus starter template, routing to a screen that shows the map for a chosen `ADM0_A3`
-- [ ] All ~239 `<path>` elements rendered **once**; highlight varies the `fill` **attribute** per Card — do NOT swap SVG child nodes (Dioxus #2274 workaround)
+- [ ] All ~240 `<path>` elements rendered **once**; highlight varies the `fill` **attribute** per Card — do NOT swap SVG child nodes (Dioxus #2274 workaround)
 - [ ] Boundary lines visible on every entity in both states, **non-scaling stroke**
 - [ ] Full-bleed / edge-to-edge, no card chrome
 - [ ] Demoable: passing different `ADM0_A3` values highlights the correct entity; verify a multi-part feature (e.g. France) and an antimeridian one (e.g. Russia) render sanely at world scale
