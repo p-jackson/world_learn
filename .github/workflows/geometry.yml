@@ -1,0 +1,25 @@
+name: geometry
+
+# Unit tests + produced-asset invariants + drift check for the dev-only
+# geometry pipeline (tools/geometry -> assets/geometry.json).
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/geometry/package-lock.json
+      - run: npm ci
+        working-directory: tools/geometry
+      # Rebuild from pinned Natural Earth sources and fail if the committed
+      # asset is stale (source changed but assets/geometry.json wasn't rebuilt).
+      - run: npm run build
+        working-directory: tools/geometry
+      - run: git diff --exit-code -- assets/geometry.json
+      - run: npm test
+        working-directory: tools/geometry

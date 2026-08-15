@@ -48,3 +48,22 @@ To run for a different platform, use the `--platform platform` flag. E.g.
 dx serve --platform desktop
 ```
 
+## Tests
+
+### Geometry pipeline
+
+The dev-only geometry pipeline (`tools/geometry` → `assets/geometry.json`) has
+unit tests plus invariants asserted against the committed asset. Run them before
+committing any change to `tools/geometry/**` or `assets/geometry.json`:
+
+```bash
+cd tools/geometry
+npm ci        # first time / after dependency changes
+npm test      # unit tests + produced-asset invariants
+```
+
+CI runs the same `npm test` on every push/PR that touches those paths (see
+`.github/workflows/geometry.yml`). If you regenerate the asset, run
+`npm run build` and commit the updated `assets/geometry.json` so the invariants
+match. See `tools/geometry/README.md` for details.
+
