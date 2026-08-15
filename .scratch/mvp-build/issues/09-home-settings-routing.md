@@ -12,7 +12,7 @@ Source spec: `.scratch/mvp-spec/spec.md` §4.3, §4.4, §4.6, §4.7.
 - [x] **Settings**: new-cards/day stepper (default 10) as the only interactive control, persisted via the store; read-only rows — Scheduler (FSRS), Deck (240, incl. contested)
 - [x] Transitions: Home → Review → Done → Home; Home ⇄ Settings
 - [x] No onboarding/first-run flow: first launch = Home with the full new-Card backlog, daily cap applied
-- [ ] Demoable: cold launch → Home counts correct → Start → review to Done → Home; change new-cards/day in Settings and see the new-today allowance change
+- [x] Demoable: cold launch → Home counts correct → Start → review to Done → Home; change new-cards/day in Settings and see the new-today allowance change
 
 ## Comments
 
@@ -37,8 +37,16 @@ Source spec: `.scratch/mvp-spec/spec.md` §4.3, §4.4, §4.6, §4.7.
   `cargo check --target aarch64-apple-ios` all green. Reviewed via `/code-review`
   (Standards + Spec): no hard violations / no missing requirements; applied its
   dedup + speculative-generality fixes.
-- **Not yet done:** end-to-end simulator eyeball (the Demoable box) — verified by
-  tests + builds only, not run in `dx serve --ios` this session.
+- **Demoable eyeball done** (`dx serve --ios`, iPhone 16e sim). Full path walked:
+  cold launch → Home 0 due / 10 new / `Start · 10 cards`; Start → Review (progress
+  `1/10`, map card, Tap to reveal); graded 10 → Done (`10 reviewed · next batch
+  unlocks tomorrow`, Back to home) → Home 0/0, Start absent; Settings shows stepper
+  (10) + read-only FSRS / `240, incl. contested`; bumped to 15 → back to Home now
+  0 due / **5 new** / `Start · 5 cards` — allowance = cap − introduced, persisted
+  via store across remount. All checklist rows verified.
+- **Found while eyeballing** (separate tickets, not blockers for 09): title still
+  reads "Wayfinder" not "World Learn" (issue 13); Indonesia map frame zooms tight
+  onto Kalimantan — same heuristic as issue 10 (issue 14).
 
 ### Open questions
 
