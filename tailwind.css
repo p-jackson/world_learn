@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+/* App palette (from the prototype). Fill colors for the map paths live in Rust
+   as `fill` attribute values (the Dioxus #2274 workaround); these tokens cover
+   everything Tailwind renders — the ocean ground, boundary stroke, and chrome. */
+@theme {
+    --color-ocean: #0f1720;
+    --color-land: #26323f;
+    --color-land-edge: #55697f;
+    --color-ink: #eef3f8;
+    --color-ink-dim: #9fb0c0;
+    --color-panel: #151f2a;
+    --color-line: #2a3a4a;
+    --color-danger: #ef5a5a;
+}
