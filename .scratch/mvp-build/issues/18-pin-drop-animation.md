@@ -19,8 +19,8 @@ plain `opacity-0` ⇄ visible class swap (`Map` component, `pin` prop, around
 
 ## Acceptance
 
-- [ ] Pin visibly drops/animates in on reveal, on-device
-- [ ] Front→reveal→front cycle still only toggles visibility, no structural
+- [x] Pin visibly drops/animates in on reveal, on-device
+- [x] Front→reveal→front cycle still only toggles visibility, no structural
       SVG changes (per existing architecture constraint)
-- [ ] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+- [x] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
       `cargo fmt --check`
