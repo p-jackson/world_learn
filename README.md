@@ -1,51 +1,33 @@
-# Development
+# World Learn
 
-Your new bare-bones project includes minimal organization with a single `main.rs` file and a few assets.
+An iOS flashcard app for learning **where every country is**. A regional-zoom
+map highlights one country with its borders; you recall the name, tap to reveal
+it (plus a dropped pin), then self-grade **Again / Hard / Good / Easy**.
+[FSRS](https://github.com/open-spaced-repetition/fsrs-rs) schedules each review,
+and new countries are introduced big→obscure at a configurable daily cap.
+
+The deck is the full inhabited [Natural Earth](https://www.naturalearthdata.com/)
+admin-0 set — **240 entities**, contested territories included. Built with
+[Dioxus 0.7](https://dioxuslabs.com/) (Rust), rendering inline SVG maps, running
+natively on iOS.
+
+The full product spec lives at `.scratch/mvp-spec/spec.md`; domain terms are
+defined in `CONTEXT.md`.
+
+## Layout
 
 ```
-project/
-├─ assets/ # Any assets that are used by the app should be placed here
-├─ src/
-│  ├─ main.rs # main.rs is the entry point to your application and currently contains all components for the app
-├─ Cargo.toml # The Cargo.toml file defines the dependencies and feature flags for your project
+src/            # Rust app (Dioxus) — screens, deck, scheduling, persistence
+assets/         # Shipped assets, incl. the generated geometry.json map data
+tools/geometry/ # Dev-only d3-geo pipeline that builds assets/geometry.json
 ```
 
-### Automatic Tailwind (Dioxus 0.7+)
+## Running
 
-As of Dioxus 0.7, there no longer is a need to manually install tailwind. Simply `dx serve` and you're good to go!
-
-Automatic tailwind is supported by checking for a file called `tailwind.css` in your app's manifest directory (next to Cargo.toml). To customize the file, use the dioxus.toml:
-
-```toml
-[application]
-tailwind_input = "my.css"
-tailwind_output = "assets/out.css" # also customize the location of the out file!
-```
-
-### Tailwind Manual Install
-
-To use tailwind plugins or manually customize tailwind, you can can install the Tailwind CLI and use it directly.
-
-### Tailwind
-1. Install npm: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
-2. Install the Tailwind CSS CLI: https://tailwindcss.com/docs/installation/tailwind-cli
-3. Run the following command in the root of the project to start the Tailwind CSS compiler:
+The app targets iOS. Serve it to the simulator (or a connected device) with:
 
 ```bash
-npx @tailwindcss/cli -i ./input.css -o ./assets/tailwind.css --watch
-```
-
-### Serving Your App
-
-Run the following command in the root of your project to start developing with the default platform:
-
-```bash
-dx serve
-```
-
-To run for a different platform, use the `--platform platform` flag. E.g.
-```bash
-dx serve --platform desktop
+dx serve --ios
 ```
 
 ## Tests
@@ -89,4 +71,3 @@ CI runs the same `npm test` on every push/PR that touches those paths (see
 `.github/workflows/geometry.yml`). If you regenerate the asset, run
 `npm run build` and commit the updated `assets/geometry.json` so the invariants
 match. See `tools/geometry/README.md` for details.
-
