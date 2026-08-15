@@ -1,6 +1,6 @@
 # 17 — Stop mixing Tailwind and hand-written CSS
 
-Status: ready-for-agent
+Status: done
 
 **What's wrong:** `assets/tailwind.css` is linked and used throughout
 (`src/map.rs`, `src/review.rs`, `src/main.rs`), but `assets/main.css` also
@@ -21,8 +21,21 @@ to `main.css` not being linked).
 
 ## Acceptance
 
-- [ ] Only one CSS system in use (Tailwind); `assets/main.css` deleted or
+- [x] Only one CSS system in use (Tailwind); `assets/main.css` deleted or
       folded into Tailwind
-- [ ] No visual regression (spot-check Home, Review front/reveal, Done)
-- [ ] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+- [x] No visual regression (spot-check Home, Review front/reveal, Done)
+- [x] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
       `cargo fmt --check`
+
+## Resolution
+
+Already done by issue 12 (c5b78fc): `assets/main.css` deleted, body background
+folded into a literal in `main.rs`'s pre-Tailwind `<style>` head tag. No
+`assets/main.css` or other CSS file remains; `src/**` has no raw CSS. Two
+`style:` attrs remain, both legitimate (not sweepable to Tailwind classes):
+- `review.rs`: runtime-computed progress-bar width % — can't be a static
+  Tailwind class.
+- `main.rs`: inline `<style>` in the native WKWebView head, painted before
+  the Tailwind stylesheet asset loads (avoids white flash on launch).
+
+No code changes needed this pass; verified via grep sweep + gate rerun.
