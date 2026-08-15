@@ -14,10 +14,10 @@
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
-use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 /// Current on-disk schema. Migration path is load-all/save-all; only v1 exists.
@@ -45,7 +45,7 @@ pub struct ReviewState {
 }
 
 /// The only interactive setting (spec §4.4).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub new_cards_per_day: u32,
 }
@@ -87,54 +87,6 @@ impl Default for ReviewState {
     }
 }
 
-/// Anything that can go wrong loading or saving the store.
-#[derive(Debug)]
-pub enum StoreError {
-    /// Filesystem I/O failed.
-    Io(std::io::Error),
-    /// The on-disk file is not valid JSON / does not match the schema.
-    Parse(serde_json::Error),
-    /// The file's `schema_version` is newer than this build understands.
-    /// Older versions migrate via load-all/save-all; a newer one must fail
-    /// loudly rather than mis-parse as the current schema.
-    UnsupportedVersion(u32),
-}
-
-impl fmt::Display for StoreError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            StoreError::Io(e) => write!(f, "store I/O error: {e}"),
-            StoreError::Parse(e) => write!(f, "store parse error: {e}"),
-            StoreError::UnsupportedVersion(v) => write!(
-                f,
-                "unsupported schema version {v}; this build supports up to {SCHEMA_VERSION}"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for StoreError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            StoreError::Io(e) => Some(e),
-            StoreError::Parse(e) => Some(e),
-            StoreError::UnsupportedVersion(_) => None,
-        }
-    }
-}
-
-impl From<std::io::Error> for StoreError {
-    fn from(e: std::io::Error) -> Self {
-        StoreError::Io(e)
-    }
-}
-
-impl From<serde_json::Error> for StoreError {
-    fn from(e: serde_json::Error) -> Self {
-        StoreError::Parse(e)
-    }
-}
-
 /// The durable store: a directory holding [`STATE_FILE`]. Construct with
 /// [`Store::open_default`] on device, or [`Store::open_in`] with an injected
 /// directory in tests.
@@ -145,15 +97,16 @@ pub struct Store {
 impl Store {
     /// Open the store in the iOS Application Support directory (spec §6),
     /// creating it on first launch. Wired into app launch by a later issue.
-    pub fn open_default() -> Result<Self, StoreError> {
+    pub fn open_default() -> Result<Self> {
         Self::open_in(app_support_dir()?)
     }
 
     /// Open the store in `dir`, creating the directory if needed. The seam the
     /// off-device tests inject a temp directory through.
-    pub fn open_in(dir: impl AsRef<Path>) -> Result<Self, StoreError> {
+    pub fn open_in(dir: impl AsRef<Path>) -> Result<Self> {
         let dir = dir.as_ref();
-        fs::create_dir_all(dir)?;
+        fs::create_dir_all(dir)
+            .with_context(|| format!("creating store directory {}", dir.display()))?;
         Ok(Self {
             path: dir.join(STATE_FILE),
         })
@@ -167,27 +120,35 @@ impl Store {
     /// Load persisted state. A missing file yields [`ReviewState::default`]
     /// (first launch); a present-but-invalid file is an error, never silently
     /// discarded.
-    pub fn load(&self) -> Result<ReviewState, StoreError> {
+    pub fn load(&self) -> Result<ReviewState> {
         let bytes = match fs::read(&self.path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(ReviewState::default()),
-            Err(e) => return Err(e.into()),
+            Err(e) => {
+                return Err(e)
+                    .with_context(|| format!("reading store file {}", self.path.display()));
+            }
         };
-        let state: ReviewState = serde_json::from_slice(&bytes)?;
-        if state.schema_version > SCHEMA_VERSION {
-            return Err(StoreError::UnsupportedVersion(state.schema_version));
-        }
+        let state: ReviewState = serde_json::from_slice(&bytes)
+            .with_context(|| format!("parsing store file {}", self.path.display()))?;
+        anyhow::ensure!(
+            state.schema_version <= SCHEMA_VERSION,
+            "unsupported schema version {}; this build supports up to {SCHEMA_VERSION}",
+            state.schema_version
+        );
         Ok(state)
     }
 
     /// Persist `state` atomically: serialize, write a sibling temp file, then
     /// `rename` it over the real file. `rename` on the same filesystem is
     /// atomic, so a crash mid-write leaves the previous file intact.
-    pub fn save(&self, state: &ReviewState) -> Result<(), StoreError> {
-        let json = serde_json::to_vec_pretty(state)?;
+    pub fn save(&self, state: &ReviewState) -> Result<()> {
+        let json = serde_json::to_vec_pretty(state).context("serializing review state")?;
         let tmp = self.path.with_file_name(TEMP_FILE);
-        fs::write(&tmp, &json)?;
-        fs::rename(&tmp, &self.path)?;
+        fs::write(&tmp, &json)
+            .with_context(|| format!("writing temp store file {}", tmp.display()))?;
+        fs::rename(&tmp, &self.path)
+            .with_context(|| format!("renaming {} over {}", tmp.display(), self.path.display()))?;
         Ok(())
     }
 }
@@ -201,7 +162,7 @@ impl Store {
 /// Application Support (app-managed, backed up, hidden) — not Caches (purgeable)
 /// — holds review history.
 #[cfg(target_vendor = "apple")]
-pub fn app_support_dir() -> Result<PathBuf, StoreError> {
+pub fn app_support_dir() -> Result<PathBuf> {
     use objc2_foundation::{
         NSSearchPathDirectory, NSSearchPathDomainMask, NSSearchPathForDirectoriesInDomains,
     };
@@ -211,14 +172,12 @@ pub fn app_support_dir() -> Result<PathBuf, StoreError> {
         NSSearchPathDomainMask::UserDomainMask,
         true,
     );
-    let base = paths.firstObject().ok_or_else(|| {
-        StoreError::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "no Application Support directory",
-        ))
-    })?;
+    let base = paths
+        .firstObject()
+        .context("no Application Support directory in the user domain search path")?;
     let dir = PathBuf::from(base.to_string()).join(APP_SUBDIR);
-    fs::create_dir_all(&dir)?;
+    fs::create_dir_all(&dir)
+        .with_context(|| format!("creating app support directory {}", dir.display()))?;
     Ok(dir)
 }
 
@@ -226,11 +185,8 @@ pub fn app_support_dir() -> Result<PathBuf, StoreError> {
 /// store's serde/atomic-write logic is exercised through [`Store::open_in`]
 /// with an injected directory, so this only needs to keep the crate compiling.
 #[cfg(not(target_vendor = "apple"))]
-pub fn app_support_dir() -> Result<PathBuf, StoreError> {
-    Err(StoreError::Io(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "Application Support directory is only resolvable on Apple platforms",
-    )))
+pub fn app_support_dir() -> Result<PathBuf> {
+    anyhow::bail!("Application Support directory is only resolvable on Apple platforms")
 }
 
 /// App-owned subdirectory under Application Support.
@@ -352,7 +308,8 @@ mod tests {
         fs::write(store.path(), "{ not valid json").unwrap();
 
         let err = store.load().unwrap_err();
-        assert!(matches!(err, StoreError::Parse(_)));
+        // anyhow preserves the underlying serde_json error as the source.
+        assert!(err.downcast_ref::<serde_json::Error>().is_some());
     }
 
     #[test]
@@ -366,6 +323,6 @@ mod tests {
         .unwrap();
 
         let err = store.load().unwrap_err();
-        assert!(matches!(err, StoreError::UnsupportedVersion(2)));
+        assert!(err.to_string().contains("unsupported schema version 2"));
     }
 }

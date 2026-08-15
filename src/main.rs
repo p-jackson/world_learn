@@ -8,6 +8,12 @@ const HEADER_SVG: Asset = asset!("/assets/header.svg");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 
 fn main() {
+    // Route tracing output to the platform log. On iOS the fmt subscriber writes
+    // to stdout, which `dx serve --ios` and Xcode capture. `dioxus::launch` also
+    // auto-inits this, but doing it here first covers any pre-launch logging and
+    // makes the setup explicit. See AGENTS.md "Error handling" for how errors are
+    // given context and logged at the app boundary.
+    dioxus::logger::initialize_default();
     dioxus::launch(App);
 }
 

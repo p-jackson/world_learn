@@ -4,6 +4,42 @@
 dx serve --ios
 ```
 
+# Error handling
+
+App code returns `anyhow::Result<T>`; propagate with `?`. Do not hand-roll error
+enums — reach for `anyhow`, not `thiserror`, unless a caller genuinely needs to
+branch on the error kind.
+
+Attach context at every fallible boundary so a failure reads as a chain, not a
+bare OS message. Say what the operation was and name the thing it acted on
+(path, id, value):
+
+```rust
+fs::write(&tmp, &json)
+    .with_context(|| format!("writing temp store file {}", tmp.display()))?;
+serde_json::to_vec_pretty(state).context("serializing review state")?;
+anyhow::ensure!(v <= MAX, "unsupported schema version {v}; max is {MAX}");
+```
+
+Use `.context(...)` for a static string, `.with_context(|| ...)` when the message
+needs formatting (the closure runs only on the error path), `ensure!`/`bail!` for
+invariant/early-out failures.
+
+Modules stay logging-free: they return errors, they don't log them. Log once at
+the app boundary (launch, event handlers) with the full chain via the `{:#}`
+alternate form:
+
+```rust
+if let Err(e) = store.load() {
+    tracing::error!("{e:#}"); // whole context chain, not just the outer message
+}
+```
+
+Logging is set up by `dioxus-logger` (a default `dioxus` feature). `main` calls
+`dioxus::logger::initialize_default()`; on iOS the subscriber writes to stdout,
+which `dx serve --ios` and Xcode capture. The `error!`/`warn!`/`info!` macros are
+re-exported from `dioxus::prelude`.
+
 # Verifying changes
 
 Before committing, run the tests for whatever you touched and confirm they pass.
@@ -50,6 +86,15 @@ See `docs/agents/triage-labels.md`.
 
 Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See
 `docs/agents/domain.md`.
+
+# Conventions
+
+- Do NOT add any verbose code comments that narrate what the change does or why
+it was made (e.g. `// Added this to fix X`, `// Changed from Y to Z`, restating
+the code in prose). Such explanation belongs in the PR description, not the
+source. Only keep comments that a future reader genuinely needs — non-obvious
+rationale, gotchas, links to context — and match the comment density and style
+of the surrounding code.
 
 # Dioxus
 
