@@ -1,6 +1,6 @@
 # 14 — Archipelago-nation framing distortion (Indonesia)
 
-Status: ready-for-agent
+Status: done
 
 **What's wrong:** The Indonesia review card's map framing looks off — zoomed/
 centred wrong, same class of problem as issue 10 (Russia), but the opposite
@@ -46,12 +46,24 @@ and a Papua point), and a `Frame::for_bbox`-level test if the fix also touches
 
 ## Acceptance
 
-- [ ] Indonesia's bbox/centroid cover the archipelago, not just Kalimantan
-- [ ] Indonesia eyeballed in the simulator: recognisable regional view, not a
+- [x] Indonesia's bbox/centroid cover the archipelago, not just Kalimantan
+- [x] Indonesia eyeballed in the simulator: recognisable regional view, not a
       single-island crop
-- [ ] Russia/China (issue 10) re-checked for no regression
-- [ ] Unit test(s) added covering the archipelago bbox case
-- [ ] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+- [x] Russia/China (issue 10) re-checked for no regression
+- [x] Unit test(s) added covering the archipelago bbox case
+- [x] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
       `cargo fmt --check`, `cargo check --target aarch64-apple-ios`; if
       `tools/geometry` changes, also `cd tools/geometry && npm test` and
       regenerate/commit `assets/geometry.json`
+
+## Resolution
+
+Fixed in `4469ac4`. Added `framingPolygons` to `tools/geometry/lib.mjs`: a
+feature with a dominant landmass (>`DOMINANT_AREA_FRACTION` = 0.5 of area)
+frames off that polygon alone (USA→Alaska unchanged); one with no majority
+island unions every island within an order of magnitude of the largest
+(`ARCHIPELAGO_AREA_RATIO` = 10). `IDN.bbox` is now `[95.21, -5.63, 140.98,
+9.12]` (Sumatra→Papua), centroid `[116.56, 1.93]`. `mainland{Bbox,Centroid}`
+renamed to `framing{Bbox,Centroid}`. Eyeballed on the iOS simulator
+(2026-08-15): whole archipelago highlighted and framed. Follow-up on split
+nations whose largest half holds a bare majority (Malaysia): issue 15.

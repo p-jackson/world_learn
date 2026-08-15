@@ -1,6 +1,6 @@
 # 10 — Large-country regional-zoom distortion (Russia)
 
-Status: ready-for-agent
+Status: done
 
 **What's wrong:** For a physically huge, high-latitude entity (Russia is the
 clear case), the regional-zoom frame (issue 06, `src/map.rs`) degenerates into a
@@ -55,9 +55,28 @@ scope unless the capped result still reads wrong.
 
 ## Acceptance
 
-- [ ] `MAX_WINDOW_DEG` clamp added to `Frame::for_bbox`, with the reasoning as a
-      doc comment (match issue-06 comment density)
-- [ ] Unit tests for the clamp (large clamps, mid unchanged, real-deck invariant)
-- [ ] Russia and China eyeballed in the simulator: regional view, no global squish
-- [ ] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+- [x] Frame span made size-dependent in `Frame::for_bbox`, with the reasoning as
+      a doc comment (match issue-06 comment density) — see note on the mechanism
+- [x] Unit tests for the framing (Russia regional, size-share grows, real-deck)
+- [x] Russia and China eyeballed in the simulator: regional view, no global squish
+- [x] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
       `cargo fmt --check`, `cargo check --target aarch64-apple-ios`
+
+## Resolution
+
+Fixed in `4469ac4`, with a different mechanism than the "clamp `span` to
+`MAX_WINDOW_DEG`" this ticket proposed. The multiplicative `FRAME_PADDING`
+(×3.4) plus `MIN_WINDOW_DEG` floor was replaced with an **additive**
+`CONTEXT_MARGIN_DEG` (10.6° each side): `span = max(corrected_width, height) +
+2·margin`. Because the context is a fixed width rather than a multiple, a
+country's share of the frame grows with its size — the size-dependent zoom the
+user asked for (Russia fills most of the frame, a speck floats in a wide
+window) — and the additive margin self-limits big countries without a separate
+clamp: Russia frames to ~99° (was ~264°). Japan's ~30° reference is preserved
+(the margin is pinned to it).
+
+Also added antimeridian **wrap** (drew the deck 3×, ∓360° copies) so
+Pacific-straddling frames (NZL/Fiji) never show the bare map edge — the
+"big gap on the right" symptom; the additive reframe already removes Russia's
+own gap. Eyeballed on the iOS simulator (2026-08-15): Russia, China, NZL, Fiji
+all frame cleanly. Split-nation centring follow-up (Malaysia): issue 15.
