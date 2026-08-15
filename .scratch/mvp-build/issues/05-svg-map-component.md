@@ -1,5 +1,7 @@
 # 05 — SVG map component
 
+Status: done
+
 **What to build:** The foundational map view: an inline-SVG world rendered once from the geometry asset, with one Entity highlighted. Given an `ADM0_A3`, that entity fills a highlight color, everyone else is base fill, and boundary lines are visible on all entities. Stands up the minimal app scaffold needed to see it on screen (no zoom, no grading yet). This is the render primitive every later Review ticket builds on.
 
 Source spec: `.scratch/mvp-spec/spec.md` §3.3, §4.1 (render path only).
@@ -41,5 +43,3 @@ Two-axis `/code-review`: Spec faithful (core render-once + fill-attribute +
 non-scaling stroke correct; "routing" and strict "edge-to-edge" partial only
 because of the acknowledged throwaway dev bar). Standards clean — no hard
 violations; judgement-call smells confined to the throwaway scaffold.
-
-Status: ready-for-human

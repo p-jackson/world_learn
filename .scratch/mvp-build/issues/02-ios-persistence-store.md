@@ -1,5 +1,7 @@
 # 02 — iOS persistence store
 
+Status: done
+
 **What to build:** The durable store the app reads at launch and writes after every grade. It resolves the correct iOS sandbox directory, loads the review-state JSON on start, and saves it back atomically so a mid-session quit never corrupts or loses data. Everything downstream that persists a Card's schedule goes through this.
 
 Source spec: `.scratch/mvp-spec/spec.md` §5.1, §6.

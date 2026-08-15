@@ -1,5 +1,7 @@
 # 09 — Home / Settings / Done + routing
 
+Status: done
+
 **What to build:** The surrounding app shell that makes the three-screen MVP whole. Home is the launch surface with due/new counts and a Start button; Settings exposes the one interactive control (new-cards/day); the router ties Home, Review, Settings, and Done together with the specified transitions. First launch drops straight into Home with the full new-Card backlog — no onboarding.
 
 Source spec: `.scratch/mvp-spec/spec.md` §4.3, §4.4, §4.6, §4.7.

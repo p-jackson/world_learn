@@ -1,5 +1,7 @@
 # 08 — Review grading + queue advance
 
+Status: done
+
 **What to build:** Make the Review loop real end to end. The four grade buttons now drive the scheduler: grading a Card advances FSRS state, persists, pulls the next Card from the session queue (re-drilling Again cards later in the session), and lands on the done-for-today state when the queue empties. This is the tracer bullet that connects UI to the scheduling core.
 
 Source spec: `.scratch/mvp-spec/spec.md` §4.1, §4.5, §5.4.

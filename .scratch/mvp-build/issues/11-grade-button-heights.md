@@ -1,6 +1,6 @@
 # 11 — Revisit grade-button heights
 
-Status: ready-for-agent
+Status: done
 
 **What's wrong:** The four difficulty buttons (Again/Hard/Good/Easy) on the reveal
 state feel too tall — the stacked column dominates the lower third of the screen

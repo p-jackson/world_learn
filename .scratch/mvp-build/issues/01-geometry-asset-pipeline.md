@@ -1,5 +1,7 @@
 # 01 — Geometry asset pipeline
 
+Status: done
+
 **What to build:** A dev-only build step that turns Natural Earth admin-0 data into the static geometry asset the app ships and renders from. Running it produces a JSON map keyed by `ADM0_A3`, one entry per Deck Entity, each carrying everything a Card needs to render and frame: display names, an SVG path string, a bounding box, centroid, and the intro-order signals. This asset is the single source of Deck membership, geometry, and ordering for every downstream ticket. The script itself never ships.
 
 Source spec: `.scratch/mvp-spec/spec.md` §2, §3.

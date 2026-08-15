@@ -1,6 +1,6 @@
 # 13 — Home screen title says "Wayfinder", should be "World Learn"
 
-Status: ready-for-agent
+Status: done
 
 **What's wrong:** The Home screen `h1` displays "Wayfinder" instead of the app's
 actual name, "World Learn". Surfaced during the issue-09 demo eyeball

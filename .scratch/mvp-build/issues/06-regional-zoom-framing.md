@@ -1,5 +1,7 @@
 # 06 — Regional-zoom framing
 
+Status: done
+
 **What to build:** Turn the world map into the Review's regional zoom. For the highlighted Entity, the viewport frames its mainland with padding so neighbours show as location cues, tiny islands aren't over-zoomed, and high-latitude horizontal stretch is corrected. After this ticket, showing a Card presents the medium regional framing the product calls for — a pure `viewBox` swap per Card, no re-projection.
 
 Source spec: `.scratch/mvp-spec/spec.md` §3.2, §4.2.

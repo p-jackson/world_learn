@@ -1,5 +1,7 @@
 # 04 — FSRS scheduling + session/grading core
 
+Status: done
+
 **What to build:** The scheduler brain, pure Rust and fully unit-testable without any UI. Given the persisted store and today's date it derives what's due, what new Cards are allowed today, and builds the session queue; given a grade it advances FSRS state, computes the next due date, requeues or exits the Card, and persists. This is the contract the Review loop drives.
 
 Source spec: `.scratch/mvp-spec/spec.md` §5.2, §5.3, §5.4.
@@ -32,5 +34,3 @@ Source spec: `.scratch/mvp-spec/spec.md` §5.2, §5.3, §5.4.
 31 tests green (11 new); clippy `-D warnings`, fmt, iOS target all clean.
 Two-axis `/code-review`: Spec faithful (no gaps/creep); Standards clean after
 adding card-naming context to the grade boundary.
-
-Status: ready-for-human

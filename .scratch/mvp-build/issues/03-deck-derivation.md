@@ -1,5 +1,7 @@
 # 03 — Deck derivation + intro order
 
+Status: done
+
 **What to build:** The in-memory Deck the rest of the app iterates. It loads the static geometry asset and exposes the 240 Cards in the fixed big→obscure introduction order, so new Cards always enter the same way and every screen shares one ordering. Pure Rust, no UI.
 
 Source spec: `.scratch/mvp-spec/spec.md` §2.4, §5.2.
