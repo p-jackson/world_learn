@@ -312,6 +312,102 @@ mod tests {
         assert!(err.downcast_ref::<serde_json::Error>().is_some());
     }
 
+    /// Tripwire for the store's one unstated invariant: every Card is keyed by
+    /// its `ADM0_A3` code — the same string the geometry asset
+    /// (`assets/geometry.json`) uses for its top-level keys. The serde types
+    /// accept any `String`, so nothing else notices if a bump to the geometry
+    /// data dependency changes the code format (2-letter ISO, lowercase,
+    /// disputed-territory suffixes). Such a change would key freshly-built
+    /// Cards differently from every record already written to a device,
+    /// silently orphaning that history. Read the shipped asset and fail loudly
+    /// if any key leaves the three-ASCII-uppercase-letter shape the store and
+    /// scheduler assume.
+    const GEOMETRY_ASSET: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/geometry.json");
+
+    /// The set of `ADM0_A3` codes the shipped geometry asset ships with — the
+    /// exact set of keys the store may ever see. Read live so the tests below
+    /// guard the real asset, not a stale copy.
+    fn geometry_asset_codes() -> std::collections::BTreeSet<String> {
+        let bytes = fs::read(GEOMETRY_ASSET)
+            .unwrap_or_else(|e| panic!("reading geometry asset {GEOMETRY_ASSET}: {e}"));
+        let doc: serde_json::Value = serde_json::from_slice(&bytes)
+            .unwrap_or_else(|e| panic!("parsing geometry asset {GEOMETRY_ASSET}: {e}"));
+        let keys = doc
+            .as_object()
+            .unwrap_or_else(|| panic!("geometry asset {GEOMETRY_ASSET} is not a JSON object"));
+        keys.keys().cloned().collect()
+    }
+
+    /// Tripwire for the store's one unstated invariant: every Card is keyed by
+    /// its `ADM0_A3` code — the same string the geometry asset
+    /// (`assets/geometry.json`) uses for its top-level keys. The serde types
+    /// accept any `String`, so nothing else notices if a bump to the geometry
+    /// data dependency changes the code format (2-letter ISO, lowercase,
+    /// disputed-territory suffixes). Such a change would key freshly-built
+    /// Cards differently from every record already written to a device,
+    /// silently orphaning that history. Fail loudly if any key leaves the
+    /// three-ASCII-uppercase-letter shape the store and scheduler assume.
+    #[test]
+    fn geometry_asset_keys_match_the_adm0_a3_shape() {
+        let codes = geometry_asset_codes();
+        assert!(
+            !codes.is_empty(),
+            "geometry asset {GEOMETRY_ASSET} has no country keys"
+        );
+
+        let malformed: Vec<&String> = codes
+            .iter()
+            .filter(|k| k.len() != 3 || !k.bytes().all(|b| b.is_ascii_uppercase()))
+            .collect();
+        assert!(
+            malformed.is_empty(),
+            "geometry keys must be ADM0_A3 codes (three ASCII uppercase letters); the store \
+             keys review records by these, so a format change silently orphans on-device \
+             history. Offending keys: {malformed:?}"
+        );
+    }
+
+    /// Companion tripwire for *set*-membership drift, which the shape check
+    /// above can't see: a geo-data bump that adds, drops, or renames a country
+    /// keeps every code a valid `ADM0_A3` string yet still orphans any on-device
+    /// history keyed by a removed or renamed code. Pin the whole set to a
+    /// committed snapshot (`src/adm0_a3.snapshot`, one code per line) so any
+    /// drift shows up as a reviewable +added / -removed diff and forces a
+    /// deliberate decision. After deciding how existing data migrates,
+    /// regenerate the snapshot with `UPDATE_ADM0_A3_SNAPSHOT=1 cargo test`.
+    #[test]
+    fn geometry_asset_key_set_matches_snapshot() {
+        const SNAPSHOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/adm0_a3.snapshot");
+
+        let current = geometry_asset_codes();
+
+        if std::env::var_os("UPDATE_ADM0_A3_SNAPSHOT").is_some() {
+            let mut contents: String = current.iter().flat_map(|c| [c.as_str(), "\n"]).collect();
+            contents.pop(); // the trailing separator; a final newline is re-added
+            contents.push('\n');
+            fs::write(SNAPSHOT, contents)
+                .unwrap_or_else(|e| panic!("writing snapshot {SNAPSHOT}: {e}"));
+            return;
+        }
+
+        let snapshot: std::collections::BTreeSet<String> = fs::read_to_string(SNAPSHOT)
+            .unwrap_or_else(|e| panic!("reading snapshot {SNAPSHOT}: {e}"))
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect();
+
+        let added: Vec<&String> = current.difference(&snapshot).collect();
+        let removed: Vec<&String> = snapshot.difference(&current).collect();
+        assert!(
+            added.is_empty() && removed.is_empty(),
+            "the geometry ADM0_A3 set drifted from src/adm0_a3.snapshot. Added: {added:?}. \
+             Removed: {removed:?}. A removed or renamed code orphans on-device review history \
+             keyed by it — decide how that data migrates, then regenerate the snapshot with \
+             UPDATE_ADM0_A3_SNAPSHOT=1 cargo test."
+        );
+    }
+
     #[test]
     fn newer_schema_version_fails_loudly() {
         let dir = tempfile::tempdir().unwrap();
