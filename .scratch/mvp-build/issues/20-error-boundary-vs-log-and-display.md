@@ -1,6 +1,25 @@
 # 20 — Investigate Dioxus error boundaries vs. manual `log_and_display`
 
-Status: needs-triage
+Status: done
+
+## Decision
+
+Keep the manual `match` / `log_and_display` / `Failure` pattern; do not adopt
+`ErrorBoundary`. Prototyped it over `Home` (compiled, reverted). Rationale in
+`docs/adr/0001-load-failure-ui-manual-not-error-boundary.md`:
+
+- `CapturedError` derefs to the real `anyhow::Error`, so `?` preserves the chain
+  and the handler *can* log `{:#}` — but that log lives in the render-path
+  `handle_error`, which can re-log; the current code logs exactly once from a
+  `use_hook`/`use_signal` init.
+- `use_hook` needs `Clone`; `anyhow::Error` isn't, so a memoized mount-time load
+  must be converted to `RenderError` first — more ceremony than `log_and_display`.
+- The three sites want distinct copy, and `app_setup` sits above the router +
+  context providers, so a single catch-all boundary doesn't fit without
+  restructuring. Per-site handling is the better fit.
+- No in-progress state is at risk: `Review`'s only failure is at mount.
+
+No code change beyond recording the decision.
 
 **What's wrong:** `src/ui.rs` has a `log_and_display(&anyhow::Error) -> String`
 helper, called at three sites that each manually match a `Result` and render
@@ -44,8 +63,7 @@ Should these three sites use `ErrorBoundary` + `?` instead of the manual
 
 ## Acceptance
 
-- [ ] Decision recorded here (or in CONTEXT.md if it's a standing convention)
-- [ ] If adopted: all three sites migrated, `log_and_display` removed or
-      narrowed to what's still needed
-- [ ] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+- [x] Decision recorded here (+ standing convention in `docs/adr/0001-…`)
+- [x] Not adopted: `log_and_display` / `Failure` kept as-is
+- [x] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
       `cargo fmt --check`
