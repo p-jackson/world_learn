@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.100"
-dioxus = { version = "0.7.1", features = [] }
+dioxus = { version = "0.7.10", features = ["router"] }
 fsrs = "6"
 jiff = { version = "0.2", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }

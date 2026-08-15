@@ -7,10 +7,10 @@
 //! the store itself is platform-agnostic and takes a directory, so the
 //! serde/atomic-write logic is unit-testable off-device.
 //!
-//! This module lands one issue ahead of its first caller: the app shell wires
-//! `Store` into launch/grade later, so its public surface reads as dead code to
-//! a plain `cargo build` until then. Allowed module-wide rather than per item;
-//! drop the allow once the shell consumes it.
+//! The app shell now wires `Store` into launch, grading, and Settings, but a few
+//! reserved bits of its surface (e.g. [`Store::path`], used only in tests) still
+//! read as dead code to a plain `cargo build`. Allowed module-wide rather than per
+//! item.
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
@@ -146,6 +146,20 @@ impl Store {
         Ok(state)
     }
 
+    /// Persist a new value for the daily new-Card cap (spec §4.4 — the only
+    /// interactive setting), preserving every Card record. Loads the current
+    /// document, replaces the one field, and saves atomically; returns the
+    /// persisted state so the caller can reflect it without a reload.
+    pub fn set_new_cards_per_day(&self, new_cards_per_day: u32) -> Result<ReviewState> {
+        let mut state = self
+            .load()
+            .context("loading store to update new-cards-per-day")?;
+        state.settings.new_cards_per_day = new_cards_per_day;
+        self.save(&state)
+            .context("persisting updated new-cards-per-day")?;
+        Ok(state)
+    }
+
     /// Persist `state` atomically: serialize, write a sibling temp file, then
     /// `rename` it over the real file. `rename` on the same filesystem is
     /// atomic, so a crash mid-write leaves the previous file intact.
@@ -277,6 +291,26 @@ mod tests {
         assert_eq!(state.settings.new_cards_per_day, 10);
         assert_eq!(state.cards.len(), 1);
         assert_eq!(state.cards["FRA"], sample_card());
+    }
+
+    #[test]
+    fn set_new_cards_per_day_persists_and_preserves_cards() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open_in(dir.path()).unwrap();
+        let mut initial = ReviewState::default();
+        initial.cards.insert("FRA".to_string(), sample_card());
+        store.save(&initial).unwrap();
+
+        let returned = store.set_new_cards_per_day(25).unwrap();
+        assert_eq!(returned.settings.new_cards_per_day, 25);
+
+        let reloaded = store.load().unwrap();
+        assert_eq!(reloaded.settings.new_cards_per_day, 25);
+        assert_eq!(
+            reloaded.cards.get("FRA"),
+            Some(&sample_card()),
+            "records are preserved across a settings write"
+        );
     }
 
     #[test]

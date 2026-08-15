@@ -1,13 +1,15 @@
-//! The Review screen: the front/reveal presentation (issue 07) wired to the
-//! scheduling core so grading drives the session (spec §4.1, §4.5, issue 08).
+//! The Review route: the front/reveal presentation (issue 07) wired to the
+//! scheduling core so grading drives the session (spec §4.1, §4.5), and the
+//! Done-for-today route it lands on (spec §4.5, issue 09 routing).
 //!
-//! [`ReviewSession`] is the entry point: it owns the transient [`Session`] in a
-//! signal, hands the current Card to [`Review`], and advances on each grade. When
-//! the session queue drains it swaps to [`DoneForToday`].
+//! [`Review`] is the route component: it reads the shared [`SharedDeck`] and
+//! [`Store`] from context, owns the transient [`Session`] in a signal, hands the
+//! current Card to [`CardView`], and advances on each grade. When the queue drains
+//! it navigates to [`Route::Done`], carrying the reviewed count.
 //!
-//! [`Review`] renders two visual states of one Card, driven by a `revealed` signal
-//! the driver owns (so it can reset to front for the next Card). **Front**: the
-//! full-bleed regional-zoom map, a thin top status strip (`N left` · progress ·
+//! [`CardView`] renders two visual states of one Card, driven by a `revealed`
+//! signal the driver owns (so it can reset to front for the next Card). **Front**:
+//! the full-bleed regional-zoom map, a thin top status strip (`N left` · progress ·
 //! `i/total`), and a single "Tap to reveal" pill; tapping the pill **or the map**
 //! reveals. **Reveal**: the common name + formal long name, a 📍 dropped on the
 //! entity centroid, and the four grade buttons — each fires `on_grade`, which the
@@ -19,8 +21,10 @@ use jiff::civil::Date;
 use crate::deck::{Card, SharedDeck};
 use crate::map::WorldMap;
 use crate::scheduler;
-use crate::session::Session;
+use crate::session::{self, Session};
 use crate::store::Store;
+use crate::ui::{use_app_context, Failure};
+use crate::Route;
 
 /// The four FSRS self-grades, in button order (spec §4.1). A presentation-local
 /// enum (labels + colours); [`From`] maps it to the scheduler's [`scheduler::Grade`]
@@ -100,15 +104,9 @@ impl QueuePosition {
     }
 }
 
-/// The local device date (spec §5.4: the day boundary is local midnight). Captured
-/// once per session mount so every grade in the session stamps the same day.
-fn today_local() -> Date {
-    jiff::Zoned::now().date()
-}
-
 /// Start a session, surfacing a store-load failure as a display string (logged
-/// here, the app boundary, per AGENTS.md). Shared by the initial mount and the
-/// restart path so both fail the same way — into the [`Screen::Failed`] state.
+/// here, the app boundary, per AGENTS.md). [`Review`] renders the returned `Err`
+/// as an inline failure message rather than launching into a broken loop.
 fn start_session(deck: SharedDeck, store: Store, today: Date) -> Result<Session, String> {
     Session::start(deck, store, today).map_err(|e| {
         error!("{e:#}");
@@ -116,73 +114,64 @@ fn start_session(deck: SharedDeck, store: Store, today: Date) -> Result<Session,
     })
 }
 
-/// What [`ReviewSession`] should render this frame, snapshotted from the session
-/// signal so its read guard is dropped before any handler writes back.
-enum Screen {
-    /// The session failed to start (store load error) — surfaced, never silent.
-    Failed(String),
-    /// The queue is drained: done-for-today with this many Cards reviewed.
-    Done(usize),
-    /// A Card to review at this queue position.
-    Card(Card, QueuePosition),
-}
-
-/// The Review loop: owns the [`Session`] and advances it on each grade (spec §4.1,
-/// §4.5, §5.4). Renders the current Card via [`Review`] until the queue drains,
-/// then [`DoneForToday`].
+/// The Review loop route (spec §4.1, §4.5, §4.7): owns the [`Session`] and advances
+/// it on each grade. Renders the current Card via [`CardView`] until the queue
+/// drains, then navigates to [`Route::Done`] with the reviewed count.
 ///
-/// The session is built once from the store at mount and held in a signal; each
-/// grade calls [`Session::grade`] (FSRS advance + atomic persist + requeue of an
-/// **Again**) and resets the reveal to front for the next Card. Persistence is the
-/// Session's own — a mid-session quit is safe because every grade has already
-/// written through (an **Again**'s `due = today` re-drill survives, spec §5.4).
+/// The Deck and Store come from context (provided at the app root), so the route
+/// takes no props. The session is built once from the store at mount and held in a
+/// signal; each grade calls [`Session::grade`] (FSRS advance + atomic persist +
+/// requeue of an **Again**) and resets the reveal to front for the next Card.
+/// Persistence is the Session's own — a mid-session quit is safe because every
+/// grade has already written through (an **Again**'s `due = today` re-drill
+/// survives, spec §5.4).
 #[component]
-pub fn ReviewSession(deck: SharedDeck, store: Store) -> Element {
-    let today = use_hook(today_local);
+pub fn Review() -> Element {
+    let (deck, store) = use_app_context();
+    let nav = use_navigator();
+    let today = use_hook(session::today_local);
     let mut session = use_signal({
         let deck = deck.clone();
-        let store = store.clone();
         move || start_session(deck, store, today)
     });
     let mut revealed = use_signal(|| false);
 
+    // When the queue drains, leave for the Done route carrying the reviewed count
+    // (also covers a defensively-empty start). Reading `session` subscribes this
+    // effect, so it re-runs after each grade; once it pushes Done the route
+    // unmounts, so it fires at most once.
+    use_effect(move || {
+        if let Ok(s) = &*session.read() {
+            if s.is_done() {
+                nav.push(Route::Done {
+                    reviewed: s.reviewed(),
+                });
+            }
+        }
+    });
+
     // Snapshot what to render, releasing the read guard before building rsx (whose
     // handlers write the same signal). Cloning the current Card out keeps nothing
-    // borrowed from the guard.
+    // borrowed from the guard. A drained queue renders nothing — the effect above
+    // is navigating away this frame.
     let screen = match &*session.read() {
-        Err(e) => Screen::Failed(e.clone()),
-        Ok(s) if s.is_done() => Screen::Done(s.reviewed()),
-        Ok(s) => Screen::Card(
-            s.current()
-                .cloned()
-                .expect("a non-done session always has a current Card"),
-            QueuePosition {
-                index: s.reviewed(),
-                total: s.total(),
-            },
-        ),
+        Err(e) => Err(e.clone()),
+        Ok(s) => Ok(s.current().cloned().map(|card| {
+            (
+                card,
+                QueuePosition {
+                    index: s.reviewed(),
+                    total: s.total(),
+                },
+            )
+        })),
     };
 
     match screen {
-        Screen::Failed(err) => rsx! {
-            div { class: "p-6 font-sans text-base text-danger", "Failed to start review: {err}" }
-        },
-        Screen::Done(reviewed) => rsx! {
-            DoneForToday {
-                reviewed,
-                on_home: move |()| {
-                    // No Home screen yet (issue 09 owns routing). Restart re-derives
-                    // from the persisted store: after grading through, nothing is due
-                    // and today's cap is spent, so it lands straight back on
-                    // done-for-today — proof the passes persisted. A reload failure
-                    // surfaces the same as at mount (the Failed screen).
-                    session.set(start_session(deck.clone(), store.clone(), today));
-                    revealed.set(false);
-                },
-            }
-        },
-        Screen::Card(card, position) => rsx! {
-            Review {
+        Err(err) => rsx! { Failure { message: format!("Failed to start review: {err}") } },
+        Ok(None) => rsx! {},
+        Ok(Some((card, position))) => rsx! {
+            CardView {
                 deck,
                 card,
                 position,
@@ -191,8 +180,8 @@ pub fn ReviewSession(deck: SharedDeck, store: Store) -> Element {
                     let outcome = {
                         let mut guard = session.write();
                         // The grade buttons only render for an `Ok` session (a failed
-                        // one shows `Screen::Failed`), so the `Err` arm is unreachable
-                        // in practice — a no-op rather than a panic if it ever isn't.
+                        // one shows the error), so the `Err` arm is unreachable in
+                        // practice — a no-op rather than a panic if it ever isn't.
                         guard.as_mut().map_or_else(|_| Ok(()), |s| s.grade(grade.into()))
                     };
                     match outcome {
@@ -208,11 +197,11 @@ pub fn ReviewSession(deck: SharedDeck, store: Store) -> Element {
 
 /// The Review screen for a single Card: full-bleed map with a front⇄reveal toggle.
 ///
-/// `revealed` is owned by [`ReviewSession`] so it can reset to front after a grade;
+/// `revealed` is owned by [`Review`] so it can reset to front after a grade;
 /// tapping the map layer or the pill reveals. The four grade buttons fire
 /// `on_grade`, which the driver routes into the scheduler.
 #[component]
-fn Review(
+fn CardView(
     deck: SharedDeck,
     card: Card,
     position: QueuePosition,
@@ -276,11 +265,12 @@ fn Review(
     }
 }
 
-/// The done-for-today end state (spec §4.5): a ✓, "N reviewed · next batch unlocks
-/// tomorrow", and a Back-to-home button. `on_home` is wired by [`ReviewSession`]
-/// (routing to a real Home arrives in issue 09).
+/// The done-for-today route (spec §4.5, §4.7): a ✓, "N reviewed · next batch
+/// unlocks tomorrow", and a Back-to-home button that navigates to [`Route::Home`].
+/// `reviewed` rides in as the route's path segment, set when [`Review`] drains.
 #[component]
-fn DoneForToday(reviewed: usize, on_home: EventHandler<()>) -> Element {
+pub fn Done(reviewed: usize) -> Element {
+    let nav = use_navigator();
     // Centred vertically by flanking flex-1 spacers (avoids a justify-center
     // utility the compiled Tailwind doesn't ship).
     rsx! {
@@ -294,7 +284,7 @@ fn DoneForToday(reviewed: usize, on_home: EventHandler<()>) -> Element {
                 button {
                     class: "rounded-2xl bg-[#ffffffef] px-6 py-4 text-[16px] font-bold \
                         text-ink-on-light shadow-[0_6px_24px_#0007]",
-                    onclick: move |_| on_home.call(()),
+                    onclick: move |_| { nav.push(Route::Home {}); },
                     "Back to home"
                 }
             }

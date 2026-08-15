@@ -8,12 +8,13 @@
 //! grade, and requeueing an **Again** to the back until it passes.
 //!
 //! The derivation functions ([`status`], [`new_backlog`], [`new_allowance`],
-//! [`due_cards`], [`build_queue`]) are pure over `(&ReviewState, &Deck, today)`,
-//! so they unit-test without a `Store` or any I/O; [`Session`] adds the store and
-//! the mutable queue on top.
+//! [`due_cards`], [`build_queue`], [`counts`]) are pure over
+//! `(&ReviewState, &Deck, today)`, so they unit-test without a `Store` or any I/O;
+//! [`Session`] adds the store and the mutable queue on top.
 //!
-//! Lands one issue ahead of its first UI caller; see [`crate::store`] for the same
-//! dead-code note.
+//! The screens now consume most of this (Home reads [`counts`], Review drives a
+//! [`Session`]), but a few spec-complete derivations — e.g. per-Card [`status`] —
+//! aren't surfaced by any screen yet, so the module keeps `dead_code` allowed.
 #![allow(dead_code)]
 
 use std::collections::VecDeque;
@@ -93,6 +94,48 @@ pub fn build_queue(state: &ReviewState, deck: &Deck, today: Date) -> Vec<String>
         .chain(new_backlog(state, deck).into_iter().take(allowance))
         .map(|c| c.code.clone())
         .collect()
+}
+
+/// The two Home-screen stat tiles (spec §4.3), derived from the store: how many
+/// seen Cards are due today, and how many new Cards today's cap still admits
+/// (capped again by the backlog that remains). Their sum is the session length —
+/// the `Start · N cards` count — and equals [`build_queue`]'s length.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionCounts {
+    /// Seen Cards with `due ≤ today`.
+    pub due: usize,
+    /// New Cards a session started now would introduce — remaining allowance,
+    /// floored by the new backlog still left.
+    pub new_today: usize,
+}
+
+impl SessionCounts {
+    /// Total Cards a session started now would hold — the `Start · N` count. Home
+    /// shows Start only when this is non-zero; at 0/0 it omits Start (spec §4.3).
+    #[must_use]
+    pub const fn total(self) -> usize {
+        self.due + self.new_today
+    }
+}
+
+/// The Home-screen counts for `today` (spec §4.3). Pure over `(state, deck, today)`
+/// and consistent with [`build_queue`]: `counts(..).total()` equals the queue length
+/// a session started the same instant would have.
+#[must_use]
+pub fn counts(state: &ReviewState, deck: &Deck, today: Date) -> SessionCounts {
+    let allowance = usize::try_from(new_allowance(state, today)).unwrap_or(usize::MAX);
+    SessionCounts {
+        due: due_cards(state, deck, today).len(),
+        new_today: allowance.min(new_backlog(state, deck).len()),
+    }
+}
+
+/// The local device date (spec §5.4: the day boundary is local midnight). The one
+/// impure derivation helper — screens capture it once at mount so every grade and
+/// count in a session stamps the same day.
+#[must_use]
+pub fn today_local() -> Date {
+    jiff::Zoned::now().date()
 }
 
 /// One review session over a fixed `today` (spec §5.4). Owns the loaded store
@@ -319,6 +362,56 @@ mod tests {
             .take(2)
             .collect();
         assert_eq!(new_tail, expected.iter().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn counts_split_due_and_capped_new() {
+        let deck = deck();
+        // Make the 5th deck card due; leave the rest new. Cap new at 2.
+        let due_code = deck.cards()[4].code.clone();
+        let mut cards = BTreeMap::new();
+        cards.insert(due_code, record(TODAY, TODAY - 2.days(), TODAY - 2.days()));
+        let state = state_with(2, cards);
+
+        let c = counts(&state, &deck, TODAY);
+        assert_eq!(c.due, 1, "one seen card is due");
+        assert_eq!(c.new_today, 2, "new is capped at the allowance");
+        assert_eq!(c.total(), 3);
+    }
+
+    #[test]
+    fn counts_total_matches_build_queue_len() {
+        let deck = deck();
+        let due_code = deck.cards()[4].code.clone();
+        let mut cards = BTreeMap::new();
+        cards.insert(due_code, record(TODAY, TODAY - 2.days(), TODAY - 2.days()));
+        let state = state_with(2, cards);
+
+        // The Home tiles and the session queue must agree on the day's workload.
+        assert_eq!(
+            counts(&state, &deck, TODAY).total(),
+            build_queue(&state, &deck, TODAY).len()
+        );
+    }
+
+    #[test]
+    fn counts_new_today_is_floored_by_the_backlog() {
+        let deck = deck();
+        // A cap far larger than the deck: new_today can be at most the backlog,
+        // which on a fresh state is the whole deck.
+        let state = state_with(10_000, BTreeMap::new());
+        let c = counts(&state, &deck, TODAY);
+        assert_eq!(c.due, 0);
+        assert_eq!(c.new_today, deck.len(), "new is floored by the backlog");
+    }
+
+    #[test]
+    fn counts_are_empty_when_cap_is_zero_and_nothing_due() {
+        let deck = deck();
+        let c = counts(&state_with(0, BTreeMap::new()), &deck, TODAY);
+        assert_eq!(c.due, 0);
+        assert_eq!(c.new_today, 0);
+        assert_eq!(c.total(), 0, "0/0 → Home omits Start (spec §4.3)");
     }
 
     #[test]
