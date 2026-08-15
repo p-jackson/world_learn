@@ -56,11 +56,11 @@ fn main() {
     // mirrors `--color-ocean` in assets/tailwind.css; kept as a literal since this
     // runs before that stylesheet loads.
     //
-    // The `viewport-fit=cover` meta is aspirational: WKWebView still insets the
-    // layout viewport by the bottom home-indicator safe area, so the map does not
-    // actually render into that strip (the ocean `body` colour fills it instead).
-    // Making the map truly reach the home indicator needs a native WKWebView tweak,
-    // deferred for now.
+    // The `viewport-fit=cover` meta is inert here: wry/tao's iOS WKWebView does not
+    // honour it, so WebKit insets the layout viewport by the safe area and the map
+    // stops ~34pt short of the physical bottom (the ocean `body` fills that strip).
+    // Not fixable in-app short of a native safe-area override; deferred — see
+    // .scratch/mvp-build/issues/19 for the full disproof.
     let cfg = dioxus::mobile::Config::new().with_custom_head(
         r#"<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>html, body { background-color: #0f1720; }</style>"#
