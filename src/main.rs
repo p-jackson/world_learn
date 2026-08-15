@@ -7,9 +7,9 @@ mod scheduler;
 mod session;
 mod store;
 
-use deck::Deck;
-use map::SharedDeck;
-use review::{QueuePosition, Review};
+use deck::{Deck, SharedDeck};
+use review::ReviewSession;
+use store::Store;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 // Tailwind output, compiled from `tailwind.css` by `dx serve` (Dioxus 0.7
@@ -26,45 +26,36 @@ fn main() {
     dioxus::launch(App);
 }
 
+/// Resolve the two long-lived handles the Review loop needs: the Deck (parsed from
+/// the embedded geometry asset) and the store (the iOS Application Support file).
+/// One-time, fallible setup — the app boundary logs the chain and surfaces it.
+fn app_setup() -> anyhow::Result<(SharedDeck, Store)> {
+    let deck = SharedDeck::new(Deck::load()?);
+    let store = Store::open_default()?;
+    Ok((deck, store))
+}
+
 #[component]
 fn App() -> Element {
-    // Load the Deck once and share it by cheap Rc clone. A load failure is
-    // terminal for the map, so log the full chain and surface it rather than
-    // rendering an empty world.
-    let deck = use_hook(|| match Deck::load() {
-        Ok(deck) => Ok(SharedDeck::new(deck)),
-        Err(e) => {
+    // Resolve setup once. On failure, log the full chain and surface it rather than
+    // launching into a broken loop (AGENTS.md error handling).
+    let setup = use_hook(|| {
+        app_setup().map_err(|e| {
             error!("{e:#}");
-            Err(format!("{e:#}"))
-        }
+            format!("{e:#}")
+        })
     });
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
         document::Stylesheet { href: TAILWIND_CSS }
-        match deck {
-            Ok(deck) => rsx! { ReviewDemo { deck } },
-            Err(err) => rsx! {
-                div { class: "p-6 font-sans text-base text-danger", "Failed to load map: {err}" }
-            },
-        }
-    }
-}
-
-/// Throwaway scaffold for issue 07: renders the Review screen full-bleed on a
-/// single hardcoded Card so front⇄reveal is demoable. Real navigation and the
-/// session queue arrive in issues 08–09; this exists only to demo the presentation.
-#[component]
-fn ReviewDemo(deck: SharedDeck) -> Element {
-    // France is a good demo Card: a mainland frame with visible neighbours.
-    let card = deck
-        .get("FRA")
-        .or_else(|| deck.cards().first())
-        .expect("the shipped Deck is never empty")
-        .clone();
-    rsx! {
         div { class: "fixed inset-0",
-            Review { deck, card, position: QueuePosition { index: 0, total: 11 } }
+            match setup {
+                Ok((deck, store)) => rsx! { ReviewSession { deck, store } },
+                Err(err) => rsx! {
+                    div { class: "p-6 font-sans text-base text-danger", "Failed to start: {err}" }
+                },
+            }
         }
     }
 }

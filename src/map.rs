@@ -16,12 +16,9 @@
 //! no path re-render (issue 06, spec §3.2/§4.2). With no highlight the map falls
 //! back to [`WORLD_VIEW_BOX`].
 
-use std::ops::Deref;
-use std::rc::Rc;
-
 use dioxus::prelude::*;
 
-use crate::deck::Deck;
+use crate::deck::SharedDeck;
 
 /// `viewBox` covering the whole equirectangular world: `min-x min-y width height`
 /// for x ∈ [-180, 180], y ∈ [-90, 90] (see module docs for the projection).
@@ -166,33 +163,6 @@ fn svg_num(v: f64) -> String {
     s
 }
 
-/// A shared, immutable [`Deck`] cheap enough to pass as a prop: an `Rc` compared
-/// by pointer identity. The Deck is built once and never mutated, so identity
-/// equality is the right prop-diff — it keeps [`WorldMap`] from re-rendering when
-/// only an unrelated signal changed.
-#[derive(Clone)]
-pub struct SharedDeck(Rc<Deck>);
-
-impl SharedDeck {
-    pub fn new(deck: Deck) -> Self {
-        Self(Rc::new(deck))
-    }
-}
-
-impl PartialEq for SharedDeck {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-impl Deref for SharedDeck {
-    type Target = Deck;
-
-    fn deref(&self) -> &Deck {
-        &self.0
-    }
-}
-
 /// The world map with one Entity highlighted. Fills its container (`h-full
 /// w-full`); the caller sizes it (full-bleed on the Review screen).
 ///
@@ -268,6 +238,7 @@ pub fn WorldMap(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::deck::Deck;
 
     #[test]
     fn fill_for_marks_only_the_matching_code() {
@@ -442,17 +413,5 @@ mod tests {
         assert_eq!(highlit("FRA"), 1);
         assert_eq!(highlit("RUS"), 1);
         assert_eq!(highlit("ZZZ"), 0);
-    }
-
-    #[test]
-    fn shared_deck_compares_by_identity() {
-        let a = SharedDeck::new(Deck::load().unwrap());
-        let b = a.clone();
-        // Clones share the Rc → equal; an independently loaded Deck is not.
-        // (`assert!` rather than `assert_ne!` so `SharedDeck` needn't impl Debug.)
-        assert!(a == b);
-        assert!(a != SharedDeck::new(Deck::load().unwrap()));
-        // Deref reaches the Deck's own surface.
-        assert_eq!(a.len(), 240);
     }
 }

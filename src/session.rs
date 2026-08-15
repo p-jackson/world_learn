@@ -21,7 +21,7 @@ use std::collections::VecDeque;
 use anyhow::{Context, Result};
 use jiff::civil::Date;
 
-use crate::deck::{Card, Deck};
+use crate::deck::{Card, Deck, SharedDeck};
 use crate::scheduler::{Grade, Scheduler};
 use crate::store::{ReviewState, Store};
 
@@ -99,21 +99,32 @@ pub fn build_queue(state: &ReviewState, deck: &Deck, today: Date) -> Vec<String>
 /// state, the transient queue, and the [`Scheduler`]; drives the front→grade loop
 /// the Review screen renders. A session spans one local day — `today` is captured
 /// at [`Session::start`] and every grade stamps it.
-pub struct Session<'a> {
-    deck: &'a Deck,
-    store: &'a Store,
+///
+/// It owns its [`SharedDeck`] and [`Store`] handles by value (both are cheap
+/// `Clone`s — an `Rc` and a path), so the whole `Session` is `'static` and lives
+/// in a Dioxus `Signal` the Review screen advances on each grade.
+pub struct Session {
+    deck: SharedDeck,
+    store: Store,
     scheduler: Scheduler,
     today: Date,
     state: ReviewState,
     /// `ADM0_A3` codes still to review this session, front = current Card.
     queue: VecDeque<String>,
+    /// Queue length at [`Session::start`] — the distinct-Card count the status
+    /// strip's `i/total` and the done screen's "N reviewed" are measured against.
+    /// Fixed for the session: new Cards are never added mid-session, and an
+    /// **Again** requeues in place (no net length change), so this is the total
+    /// number of Cards a completed session will have passed.
+    initial_len: usize,
 }
 
-impl<'a> Session<'a> {
+impl Session {
     /// Start a session: load the store and build today's queue (spec §5.2).
-    pub fn start(deck: &'a Deck, store: &'a Store, today: Date) -> Result<Self> {
+    pub fn start(deck: SharedDeck, store: Store, today: Date) -> Result<Self> {
         let state = store.load().context("loading store to start session")?;
-        let queue = build_queue(&state, deck, today).into();
+        let queue: VecDeque<String> = build_queue(&state, &deck, today).into();
+        let initial_len = queue.len();
         Ok(Self {
             deck,
             store,
@@ -121,6 +132,7 @@ impl<'a> Session<'a> {
             today,
             state,
             queue,
+            initial_len,
         })
     }
 
@@ -128,6 +140,22 @@ impl<'a> Session<'a> {
     #[must_use]
     pub fn remaining(&self) -> usize {
         self.queue.len()
+    }
+
+    /// Distinct Cards this session started with (spec §4.1 `i/total`, §4.5 "N
+    /// reviewed"). Fixed at [`Session::start`]; see [`Self::initial_len`].
+    #[must_use]
+    pub const fn total(&self) -> usize {
+        self.initial_len
+    }
+
+    /// Distinct Cards passed (exited the queue) so far — `total − remaining`. It
+    /// drives the status strip's progress and equals [`Self::total`] once the
+    /// session is done. An **Again** doesn't advance it (the Card stays queued),
+    /// so it counts genuine progress, not grade taps.
+    #[must_use]
+    pub fn reviewed(&self) -> usize {
+        self.initial_len - self.queue.len()
     }
 
     /// Whether the session queue is drained — the done-for-today state (spec §4.5).
@@ -189,6 +217,11 @@ mod tests {
 
     fn deck() -> Deck {
         Deck::load().unwrap()
+    }
+
+    /// A shared Deck handle for the session tests, which own the Deck by value.
+    fn shared_deck() -> SharedDeck {
+        SharedDeck::new(Deck::load().unwrap())
     }
 
     /// A store over a fresh temp dir, plus the tempdir guard (kept alive by the
@@ -290,11 +323,11 @@ mod tests {
 
     #[test]
     fn again_requeues_to_back_and_persists_due_today() {
-        let deck = deck();
+        let deck = shared_deck();
         let (store, _guard) = temp_store();
         store.save(&state_with(2, BTreeMap::new())).unwrap();
 
-        let mut session = Session::start(&deck, &store, TODAY).unwrap();
+        let mut session = Session::start(deck, store.clone(), TODAY).unwrap();
         let front = session.current().unwrap().code.clone();
         let started = session.remaining();
 
@@ -325,11 +358,11 @@ mod tests {
 
     #[test]
     fn pass_exits_the_card_and_schedules_a_future_due() {
-        let deck = deck();
+        let deck = shared_deck();
         let (store, _guard) = temp_store();
         store.save(&state_with(2, BTreeMap::new())).unwrap();
 
-        let mut session = Session::start(&deck, &store, TODAY).unwrap();
+        let mut session = Session::start(deck, store.clone(), TODAY).unwrap();
         let front = session.current().unwrap().code.clone();
         let started = session.remaining();
 
@@ -349,13 +382,47 @@ mod tests {
         );
     }
 
+    /// The status strip's `total` is fixed for the session and `reviewed` counts
+    /// distinct Cards passed — genuine progress — not grade taps: an **Again**
+    /// requeues in place and must not advance it (spec §4.1 `i/total`, §4.5).
+    #[test]
+    fn total_is_fixed_and_reviewed_counts_passes_not_taps() {
+        let deck = shared_deck();
+        let (store, _guard) = temp_store();
+        // 3 new cards, none due → a 3-card session.
+        store.save(&state_with(3, BTreeMap::new())).unwrap();
+
+        let mut session = Session::start(deck, store, TODAY).unwrap();
+        let total = session.total();
+        assert_eq!(total, 3);
+        assert_eq!(session.reviewed(), 0);
+
+        // A pass exits a Card → reviewed advances by one.
+        session.grade(Grade::Good).unwrap();
+        assert_eq!(session.total(), total, "total is fixed for the session");
+        assert_eq!(session.reviewed(), 1);
+
+        // An Again requeues the Card in place → no net progress.
+        session.grade(Grade::Again).unwrap();
+        assert_eq!(session.reviewed(), 1, "Again is a re-drill, not progress");
+        assert_eq!(session.remaining(), total - 1);
+
+        // Passing the rest (incl. the re-drill) drains the queue; reviewed lands
+        // on total exactly when the session is done.
+        while !session.is_done() {
+            session.grade(Grade::Good).unwrap();
+        }
+        assert_eq!(session.reviewed(), total);
+        assert_eq!(session.reviewed(), session.total());
+    }
+
     #[test]
     fn first_grade_of_a_new_card_stamps_introduced_on_today() {
-        let deck = deck();
+        let deck = shared_deck();
         let (store, _guard) = temp_store();
         store.save(&state_with(1, BTreeMap::new())).unwrap();
 
-        let mut session = Session::start(&deck, &store, TODAY).unwrap();
+        let mut session = Session::start(deck, store.clone(), TODAY).unwrap();
         let code = session.current().unwrap().code.clone();
         assert_eq!(status(session.state(), &code, TODAY), Status::New);
 
@@ -369,12 +436,12 @@ mod tests {
     /// introductions are exhausted for `today` but a later day frees the cap again.
     #[test]
     fn new_cap_is_enforced_within_a_day_and_resets_across_the_boundary() {
-        let deck = deck();
+        let deck = shared_deck();
         let (store, _guard) = temp_store();
         store.save(&state_with(3, BTreeMap::new())).unwrap();
 
         // Day 1: introduce and pass all 3 allowed new cards.
-        let mut day1 = Session::start(&deck, &store, TODAY).unwrap();
+        let mut day1 = Session::start(deck.clone(), store.clone(), TODAY).unwrap();
         assert_eq!(day1.remaining(), 3, "cap of 3 admits 3 new cards");
         let introduced: Vec<String> = (0..3)
             .map(|_| {
@@ -386,7 +453,7 @@ mod tests {
 
         // Same day, fresh session: cap is spent, no new cards, and none of the 3
         // passes are due yet → nothing to do.
-        let same_day = Session::start(&deck, &store, TODAY).unwrap();
+        let same_day = Session::start(deck.clone(), store.clone(), TODAY).unwrap();
         assert_eq!(new_allowance(same_day.state(), TODAY), 0);
         assert_eq!(
             same_day.remaining(),
@@ -397,7 +464,7 @@ mod tests {
         // Next day: cap resets; a fresh batch of new cards (none of the day-1 three)
         // is admitted.
         let tomorrow = TODAY + 1.days();
-        let day2 = Session::start(&deck, &store, tomorrow).unwrap();
+        let day2 = Session::start(deck.clone(), store, tomorrow).unwrap();
         assert_eq!(
             new_allowance(day2.state(), tomorrow),
             3,

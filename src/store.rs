@@ -92,6 +92,11 @@ impl Default for ReviewState {
 /// The durable store: a directory holding [`STATE_FILE`]. Construct with
 /// [`Store::open_default`] on device, or [`Store::open_in`] with an injected
 /// directory in tests.
+///
+/// A `Store` is just a resolved file path, so it is cheap to `Clone` and compares
+/// by that path — [`crate::session::Session`] owns one by value (rather than a
+/// borrow) so it can live in a Dioxus `Signal`, and it is passed as a UI prop.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Store {
     path: PathBuf,
 }

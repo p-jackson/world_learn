@@ -16,6 +16,8 @@
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, HashMap};
+use std::ops::Deref;
+use std::rc::Rc;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -119,6 +121,34 @@ impl Deck {
     /// Whether `code` is a Deck member.
     pub fn contains(&self, code: &str) -> bool {
         self.index.contains_key(code)
+    }
+}
+
+/// A shared, immutable [`Deck`] cheap enough to pass as a prop or own in session
+/// state: an `Rc` compared by pointer identity. The Deck is built once and never
+/// mutated, so identity equality is the right prop-diff — it keeps consumers like
+/// [`crate::map::WorldMap`] from re-rendering when only an unrelated signal changed.
+#[derive(Clone)]
+pub struct SharedDeck(Rc<Deck>);
+
+impl SharedDeck {
+    #[must_use]
+    pub fn new(deck: Deck) -> Self {
+        Self(Rc::new(deck))
+    }
+}
+
+impl PartialEq for SharedDeck {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Deref for SharedDeck {
+    type Target = Deck;
+
+    fn deref(&self) -> &Deck {
+        &self.0
     }
 }
 
@@ -262,6 +292,18 @@ mod tests {
                 pop_pos(code)
             );
         }
+    }
+
+    #[test]
+    fn shared_deck_compares_by_identity() {
+        let a = SharedDeck::new(Deck::load().unwrap());
+        let b = a.clone();
+        // Clones share the Rc → equal; an independently loaded Deck is not.
+        // (`assert!` rather than `assert_ne!` so `SharedDeck` needn't impl Debug.)
+        assert!(a == b);
+        assert!(a != SharedDeck::new(Deck::load().unwrap()));
+        // Deref reaches the Deck's own surface.
+        assert_eq!(a.len(), 240);
     }
 
     #[test]
