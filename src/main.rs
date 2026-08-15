@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+mod deck;
 mod store;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
