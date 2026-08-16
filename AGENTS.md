@@ -21,6 +21,26 @@ on wasm — wired in `Cargo.toml`'s `[target.wasm32-unknown-unknown.dependencies
 and `.cargo/config.toml`; don't remove either or `dx serve --web` stops linking/
 running.
 
+## Driving the web app as an agent
+
+Reach for web when you need to *see* a change render: it drives in a headless
+browser, where iOS needs a simulator you can't reach. Workflow:
+
+1. `dx serve --web` is a **long-running server** — start it in the background (run
+   foreground and it never returns), then wait for `launching app!` in its output.
+2. Drive `http://localhost:8080` with the **Playwright MCP** browser (the
+   claude-in-chrome extension is often not connected in this environment).
+3. A `Cargo.toml` / dep / `.cargo/config.toml` change **doesn't hot-reload** —
+   `dx` rebuilds on source edits only; restart the server after a manifest change.
+
+To start from a known deck/schedule without grading through days of reviews, seed
+the store directly: write a `ReviewState` JSON to the `world_learn.review_state`
+`localStorage` key, then reload — launch reads it, no in-app hook needed. The JSON
+is `src/store.rs`'s serde types verbatim (`schema_version`, `settings`, `cards`
+keyed by `ADM0_A3`); grade one card in the browser once and read the key back to
+copy a real example. (Issue 25 builds the typed Playwright seeding helper on top of
+this.)
+
 # Error handling
 
 App code returns `anyhow::Result<T>`; propagate with `?`. Do not hand-roll error
