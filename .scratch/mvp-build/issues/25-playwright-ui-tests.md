@@ -1,6 +1,6 @@
 # 25 — Playwright UI tests with easy state mocking
 
-Status: needs-triage
+Status: done
 Blocked by: 24
 
 **Goal:** a Playwright suite that drives the real app in a browser, with a
@@ -74,10 +74,23 @@ passed on the runner.
 
 ## Acceptance
 
-- [ ] Playwright installed and configured; `npm test` (or documented command)
-      runs the suite headless locally and in CI.
-- [ ] State-seeding mechanism works and is test/debug-gated out of ship builds;
-      a typed helper builds known `StoreState`s.
-- [ ] Audited flow list turned into tests: the high-value happy paths + the
-      error cases above that aren't better left to `cargo test`.
-- [ ] CI job runs the suite green on PRs; documented in AGENTS.md.
+- [x] Playwright installed and configured; `npm test` (or documented command)
+      runs the suite headless locally and in CI. (`tests/e2e/`,
+      `playwright.config.ts` — `webServer` boots `dx serve --web`.)
+- [x] State-seeding mechanism works and is test/debug-gated out of ship builds;
+      a typed helper builds known `StoreState`s. (Seeds the `localStorage`
+      key directly — the web dev backend, gated out of the iOS ship build;
+      typed builders in `tests/e2e/helpers/state.ts`.)
+- [x] Audited flow list turned into tests: the high-value happy paths + the
+      error cases above that aren't better left to `cargo test`. (Home/Review,
+      grading→Done + persistence, new-card session admits the cap + stamps
+      introductions, Again re-drill, back-to-home (issue 22), new-card cap on the
+      Home counts, settings stepper + Clear-all-memory, corrupt/wrong-schema
+      failure fallback. Framing is a **render smoke** — one highlighted country,
+      zoomed off the world view — for the representative shapes (large: Canada/
+      Australia; split: Indonesia); the framing-correctness regressions
+      themselves stay guarded by `map.rs` unit tests, not re-tested in the
+      browser. Triage of what was left to `cargo test` is documented in
+      `tests/e2e/tests/errors.spec.ts`.)
+- [x] CI job runs the suite green on PRs; documented in AGENTS.md.
+      (`.github/workflows/e2e.yml`.)

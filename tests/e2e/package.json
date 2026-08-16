@@ -1,0 +1,16 @@
+{
+  "name": "world-learn-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright end-to-end suite driving the web dev target (dx serve --web).",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1",
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2"
+  }
+}

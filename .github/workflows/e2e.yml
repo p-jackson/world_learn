@@ -1,0 +1,67 @@
+name: e2e
+
+# Browser-driven end-to-end tests: Playwright drives the real app on the web dev
+# target (dx serve --web), seeding localStorage for deterministic starts (issue
+# 25). Separate from rust.yml / geometry.yml; a green PR means this suite passed
+# on the runner. Runs on Linux — the web target is wasm, so no macOS/iOS toolchain
+# is needed.
+on:
+  push:
+    paths: &paths
+      - 'src/**'
+      - 'assets/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.cargo/config.toml'
+      - 'Dioxus.toml'
+      - 'tailwind.css'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e.yml'
+  pull_request:
+    paths: *paths
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # The build the e2e server does is the web wasm target, not the host.
+          key: e2e-web
+
+      # dx (dioxus-cli) serves the web target. Pinned to the dioxus version the
+      # app depends on; binstall fetches a prebuilt binary instead of compiling.
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y dioxus-cli@0.7.10
+        working-directory: .
+
+      # Warm the wasm dependency cache so the first `dx serve` build (which the
+      # Playwright webServer waits on) stays well inside its timeout.
+      - run: cargo build --no-default-features --features web --target wasm32-unknown-unknown
+        working-directory: .
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx playwright install --with-deps chromium
+      # Playwright's webServer boots `dx serve --web` and waits for the port.
+      - run: npm test
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 7

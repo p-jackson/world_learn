@@ -121,6 +121,25 @@ CI runs these same commands, so a red run locally is a red run in CI.
   `assets/geometry.json` so the invariants match. CI:
   `.github/workflows/geometry.yml`.
 
+- **End-to-end (browser) tests** — any change that could alter what the web app
+  renders or how it behaves (`src/**`, `assets/**`, the manifests above, or the
+  suite in `tests/e2e/**`):
+
+  ```sh
+  cd tests/e2e
+  npm ci                       # first time: also `npx playwright install chromium`
+  npm run typecheck            # tsc over the suite
+  npm test                     # Playwright, headless
+  ```
+
+  `npm test` starts `dx serve --web` itself (Playwright's `webServer`) and drives
+  it in headless Chromium; locally it reuses an already-running `dx serve` on
+  :8080. Specs seed the store by writing the `world_learn.review_state`
+  `localStorage` key directly — the deterministic-start seam — via the typed
+  builders in `tests/e2e/helpers/state.ts` (these mirror `src/store.rs`'s serde
+  types; keep them in sync). Nothing here ships: the seeding path is the web dev
+  backend, feature-gated out of the iOS build. CI: `.github/workflows/e2e.yml`.
+
 # Agent skills
 
 ## Issue tracker
