@@ -44,7 +44,7 @@ pub fn Settings() -> Element {
         move |n: u32| {
             value.set(n);
             if let Err(e) = store.set_new_cards_per_day(n) {
-                error!("{e:#}");
+                crate::observability::report(&e);
             }
         }
     };
@@ -56,7 +56,7 @@ pub fn Settings() -> Element {
     let clear_memory = move |_| {
         if confirm_clear() {
             if let Err(e) = store.clear() {
-                error!("{e:#}");
+                crate::observability::report(&e);
             }
             value.set(DEFAULT_NEW_CARDS_PER_DAY);
             confirm_clear.set(false);

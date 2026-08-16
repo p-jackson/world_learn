@@ -40,6 +40,7 @@ objc2-foundation = "0.3.2"
 # events we already emit at the app boundary into Sentry events.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 sentry = { version = "0.49", default-features = false, features = [
+    "anyhow",
     "backtrace",
     "contexts",
     "panic",

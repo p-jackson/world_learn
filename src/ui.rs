@@ -13,11 +13,12 @@ pub fn use_app_context() -> (SharedDeck, Store) {
     (use_context::<SharedDeck>(), use_context::<Store>())
 }
 
-/// Log an [`anyhow::Error`]'s full chain at the app boundary, then flatten it to a
-/// display string. Modules stay logging-free; screens log once here, on the way
-/// to a [`Failure`].
+/// Log an [`anyhow::Error`]'s full chain at the app boundary and report it, then
+/// flatten it to a display string. Modules stay logging-free; screens funnel
+/// through here on the way to a [`Failure`]. Reporting lives in
+/// [`crate::observability::report`] so the log-and-report action is one thing.
 pub fn log_and_display(e: &anyhow::Error) -> String {
-    error!("{e:#}");
+    crate::observability::report(e);
     format!("{e:#}")
 }
 

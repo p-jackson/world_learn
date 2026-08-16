@@ -2,10 +2,13 @@
 //! targets — Sentry error reporting layered onto it.
 //!
 //! AGENTS.md keeps modules logging-free and logs once at the boundary with
-//! `error!("{e:#}")`. Reporting stays at that same boundary: `sentry-tracing`
-//! turns those `error!` events into Sentry events, so the report site is the
-//! subscriber, not scattered `capture_*` calls (issue 23; the boundary-logging
-//! rule is AGENTS.md's, ADR-0001 is the related load-failure-UI decision).
+//! `error!("{e:#}")`. Reporting stays at that same boundary: [`report`] both
+//! logs the chain and captures it to Sentry. It captures the `anyhow::Error`
+//! value (via `capture_anyhow`), not the flattened `{e:#}` string, so the
+//! anyhow chain reaches the dashboard as separate exception frames rather than
+//! one opaque line. `capture_anyhow` is the sole event site — the tracing layer
+//! only feeds breadcrumbs — so nothing double-reports (issue 23; the
+//! boundary-logging rule is AGENTS.md's, ADR-0001 the related UI decision).
 //!
 //! Web is a dev-only target and the default Sentry transport does not build for
 //! wasm, so the wasm build keeps `dioxus-logger`'s subscriber untouched and
@@ -21,6 +24,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 #[must_use]
 pub fn init() -> Option<sentry::ClientInitGuard> {
+    use dioxus::logger::tracing::Level;
     use tracing_subscriber::filter::LevelFilter;
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
@@ -40,10 +44,19 @@ pub fn init() -> Option<sentry::ClientInitGuard> {
         .from_env_lossy()
         .add_directive("hyper_util=warn".parse().expect("static directive parses"));
 
+    // Breadcrumbs only: demote ERROR from its default Event mapping so the sole
+    // event site is `report`'s `capture_anyhow` (structured frames), not this
+    // layer's flattened string — and nothing double-reports. The trail of
+    // info/warn/error breadcrumbs still rides along on the captured event.
+    let sentry_layer = sentry_tracing::layer().event_filter(|md| match *md.level() {
+        Level::ERROR | Level::WARN | Level::INFO => sentry_tracing::EventFilter::Breadcrumb,
+        Level::DEBUG | Level::TRACE => sentry_tracing::EventFilter::empty(),
+    });
+
     tracing_subscriber::registry()
         .with(filter)
         .with(fmt::layer())
-        .with(sentry_tracing::layer())
+        .with(sentry_layer)
         .init();
 
     let Some(dsn) = option_env!("SENTRY_DSN") else {
@@ -68,4 +81,20 @@ pub fn init() -> Option<sentry::ClientInitGuard> {
 #[cfg(target_arch = "wasm32")]
 pub fn init() {
     dioxus::logger::initialize_default();
+}
+
+/// The boundary error action: log the full `anyhow` chain, then (on native)
+/// report it to Sentry. `capture_anyhow` preserves the chain as structured
+/// exception frames. Call this instead of a bare `error!("{e:#}")` at any
+/// boundary that wants a failure reported — it is the one Sentry event site.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn report(e: &anyhow::Error) {
+    dioxus::logger::tracing::error!("{e:#}");
+    sentry::integrations::anyhow::capture_anyhow(e);
+}
+
+/// Web (wasm): log the chain; nothing to report (Sentry is native-only).
+#[cfg(target_arch = "wasm32")]
+pub fn report(e: &anyhow::Error) {
+    dioxus::logger::tracing::error!("{e:#}");
 }

@@ -183,7 +183,7 @@ pub fn Review() -> Element {
                     match outcome {
                         // Advance to the next Card at the front, back to front state.
                         Ok(()) => revealed.set(false),
-                        Err(e) => error!("{e:#}"),
+                        Err(e) => crate::observability::report(&e),
                     }
                 },
             }
