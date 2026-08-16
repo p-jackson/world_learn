@@ -11,3 +11,5 @@
 # Geometry pipeline (dev-only)
 /tools/geometry/node_modules
 /tmp
+
+.env
