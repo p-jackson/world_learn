@@ -30,6 +30,21 @@ pub fn init() -> Option<sentry::ClientInitGuard> {
     use tracing_subscriber::util::SubscriberInitExt;
     use tracing_subscriber::{fmt, EnvFilter};
 
+    // Make `anyhow` capture a backtrace when each error is created, so the
+    // Sentry event carries a stack trace (not just the message chain):
+    // `sentry-anyhow` attaches frames only when the backtrace status is
+    // `Captured`, which needs one of these env vars set. Do this before any
+    // error can be created (std caches the enable-decision on first capture),
+    // and only if the dev hasn't set their own value (e.g. `RUST_BACKTRACE=0`).
+    // `RUST_LIB_BACKTRACE` targets library backtraces without turning on
+    // panic-print. Release/iOS builds are stripped, so frames symbolicate fully
+    // only with debug symbols uploaded to Sentry — see issue 23.
+    if std::env::var_os("RUST_LIB_BACKTRACE").is_none()
+        && std::env::var_os("RUST_BACKTRACE").is_none()
+    {
+        std::env::set_var("RUST_LIB_BACKTRACE", "1");
+    }
+
     // Mirror dioxus-logger's native defaults (debug in dev, info in release,
     // `RUST_LOG` overrides, quieten hyper), then add the Sentry layer. We set
     // the global subscriber ourselves so the layer composes; `dioxus::launch`'s

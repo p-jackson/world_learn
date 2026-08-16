@@ -48,6 +48,13 @@ combined with `sentry-tracing`. Pick one report site.
 
 ## Not in scope
 
+- **Release-build stack-frame symbolication.** `observability::init` sets
+  `RUST_LIB_BACKTRACE` so `anyhow` captures a backtrace and `sentry-anyhow`
+  attaches frames — symbolicated in debug builds. Shipped iOS builds are
+  stripped/optimised, so those frames need dSYMs (or `sentry-cli` debug-files)
+  uploaded to Sentry, plus the `debug-images` feature, to symbolicate. Follow-up
+  if in-the-wild stack traces prove necessary — the anyhow context chain (issue
+  emphasises `.context(...)` at every boundary) is often the more useful signal.
 - Error-boundary adoption for rendering fallbacks (decided against in ADR-0001).
 - Retry/recovery UX via `ErrorBoundary::clear_errors` — a separate, third
   concern; file its own issue if wanted.
