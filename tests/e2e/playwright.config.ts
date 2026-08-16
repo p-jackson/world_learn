@@ -20,6 +20,9 @@ export default defineConfig({
   // One dev server backs the whole run; keep the concurrent page count modest.
   workers: 2,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
+  // dx serves the port before the wasm build finishes; this waits the build out
+  // once so no spec races it (see helpers/global-setup.ts).
+  globalSetup: './helpers/global-setup.ts',
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'on-first-retry',
