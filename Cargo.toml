@@ -31,6 +31,24 @@ tempfile = "3.27.0"
 objc2 = "0.6.4"
 objc2-foundation = "0.3.2"
 
+# Error reporting (issue 23). Native/iOS only: web is a dev target and the
+# default sentry transport does not build for wasm, so it is scoped out of the
+# wasm target entirely (the web gate never compiles it). `rustls` (not the
+# default `native-tls`) keeps the reqwest transport cross-compiling to iOS
+# without a system-TLS link. The DSN is embedded from the environment at build
+# time (see `build.rs`), never committed. `sentry-tracing` turns the `error!`
+# events we already emit at the app boundary into Sentry events.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+sentry = { version = "0.49", default-features = false, features = [
+    "backtrace",
+    "contexts",
+    "panic",
+    "reqwest",
+    "rustls",
+] }
+sentry-tracing = "0.49"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
 # Web target extras. `dx serve --web` compiles to wasm32; two transitive deps need
 # browser-specific backends there (native/iOS builds pull neither):
 #   - fsrs → rand → getrandom: the `wasm_js` feature provides the browser RNG

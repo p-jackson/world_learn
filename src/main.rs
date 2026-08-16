@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 mod deck;
 mod home;
 mod map;
+mod observability;
 mod review;
 mod scheduler;
 mod session;
@@ -45,11 +46,12 @@ enum Route {
 }
 
 fn main() {
-    // Route tracing output to the platform log. On iOS the fmt subscriber writes
-    // to stdout, which `dx serve --ios` and Xcode capture. `dioxus::launch` also
-    // auto-inits this, but doing it here first covers any pre-launch logging and
-    // makes the setup explicit.
-    dioxus::logger::initialize_default();
+    // Install the tracing subscriber (fmt → stdout, which `dx serve --ios` and
+    // Xcode capture) plus, on native, the Sentry layer that reports our
+    // boundary `error!` events. Setting it here first means `dioxus::launch`'s
+    // auto-init no-ops. The guard flushes queued Sentry events on exit, so it is
+    // bound for the whole run — including `launch`, which never returns on iOS.
+    let _observability = observability::init();
     launch(App);
 }
 
