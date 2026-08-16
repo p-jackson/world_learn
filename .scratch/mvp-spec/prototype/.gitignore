@@ -1,6 +1,0 @@
-node_modules/
-package.json
-package-lock.json
-countries-110m.json
-countries-50m.json
-.playwright-mcp/

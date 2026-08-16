@@ -11,8 +11,7 @@ admin-0 set — **240 entities**, contested territories included. Built with
 [Dioxus 0.7](https://dioxuslabs.com/) (Rust), rendering inline SVG maps, running
 natively on iOS.
 
-The full product spec lives at `.scratch/mvp-spec/spec.md`; domain terms are
-defined in `CONTEXT.md`.
+Domain terms are defined in `CONTEXT.md`.
 
 ## Layout
 

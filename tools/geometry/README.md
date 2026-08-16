@@ -3,8 +3,6 @@
 Turns Natural Earth admin-0 into `assets/geometry.json`, the static geometry
 asset the app ships and renders from. **This tool never ships in the app build.**
 
-Spec: `.scratch/mvp-spec/spec.md` §2, §3, §4.2.
-
 ## Run
 
 ```sh
