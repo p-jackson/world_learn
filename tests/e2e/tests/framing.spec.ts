@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/fixtures';
 
 import { HIGHLIGHT_FILL, WORLD_VIEW_BOX, dueState, seed } from '../helpers/state';
 
@@ -13,21 +13,19 @@ for (const code of ['CAN', 'AUS', 'IDN']) {
   test(`the map renders a zoomed, highlighted frame for ${code}`, async ({ page }) => {
     await seed(page, dueState([code]));
     await page.getByRole('button', { name: 'Start · 1 cards' }).click();
-    // The SVG renders a beat after the route mounts; read it only once it has.
-    const highlight = `svg path[fill="${HIGHLIGHT_FILL}"]`;
-    await page.locator(highlight).first().waitFor();
 
-    const framing = await page.evaluate((sel) => {
-      const mapSvg = document.querySelector(sel)?.closest('svg');
-      return {
-        viewBox: mapSvg?.getAttribute('viewBox') ?? null,
-        // Each of the three wrap copies draws the highlighted country once.
-        highlightedCount: document.querySelectorAll(sel).length,
-      };
-    }, highlight);
+    // Each of the three wrap copies draws the highlighted country once. The SVG
+    // renders a beat after the route mounts and the copies can attach across
+    // frames, so let the web-first count auto-retry until all three are present
+    // before reading the viewBox — a plain querySelectorAll snapshot would race.
+    const highlight = page.locator(`svg path[fill="${HIGHLIGHT_FILL}"]`);
+    await expect(highlight).toHaveCount(3);
 
-    expect(framing.highlightedCount).toBe(3);
-    expect(framing.viewBox).not.toBeNull();
-    expect(framing.viewBox).not.toBe(WORLD_VIEW_BOX);
+    const viewBox = await highlight
+      .first()
+      .evaluate((path) => path.closest('svg')?.getAttribute('viewBox') ?? null);
+
+    expect(viewBox).not.toBeNull();
+    expect(viewBox).not.toBe(WORLD_VIEW_BOX);
   });
 }

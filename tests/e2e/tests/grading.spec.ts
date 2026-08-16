@@ -1,5 +1,6 @@
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
 
+import { test, expect } from '../helpers/fixtures';
 import { dueState, emptyState, readState, seed, isoDate } from '../helpers/state';
 
 /** Reveal the current card and grade it. */
