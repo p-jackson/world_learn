@@ -72,9 +72,15 @@ if let Err(e) = store.load() {
 }
 ```
 
-Logging is set up by `dioxus-logger` (a default `dioxus` feature). `main` calls
-`dioxus::logger::initialize_default()`; on iOS the subscriber writes to stdout,
-which `dx serve --ios` and Xcode capture. The `error!`/`warn!`/`info!` macros are
+Logging is set up at the boundary by `observability::init` (called from `main`
+before `launch`). On native it installs its own subscriber — an fmt layer (writes
+to stdout, which `dx serve --ios` and Xcode capture) plus the `sentry-tracing`
+layer that reports `error!` events to Sentry (issue 23) — and setting the global
+subscriber first makes `dioxus::launch`'s auto-init no-op. On web (wasm, a dev
+target) it falls back to `dioxus::logger::initialize_default()` and reports
+nothing: the Sentry deps are scoped out of the wasm target. The DSN is embedded
+at build time from the `SENTRY_DSN` env var or a gitignored `.env` (`build.rs`);
+a DSN-less build reports nothing. The `error!`/`warn!`/`info!` macros are
 re-exported from `dioxus::prelude`.
 
 # Verifying changes
