@@ -1,0 +1,7 @@
+# Select getrandom's browser RNG backend on the web target. `fsrs` pulls
+# `rand → getrandom`, which on `wasm32-unknown-unknown` refuses to build without
+# an explicit backend. Paired with the `getrandom` `wasm_js` feature in
+# `Cargo.toml`; both are required. Scoped to wasm32 so native/iOS builds are
+# untouched.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

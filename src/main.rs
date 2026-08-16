@@ -50,23 +50,45 @@ fn main() {
     // auto-inits this, but doing it here first covers any pre-launch logging and
     // makes the setup explicit.
     dioxus::logger::initialize_default();
+    launch(App);
+}
 
-    // Full-bleed presentation: paint the `body` the ocean colour so any exposed
-    // safe-area band reads as dark ocean, not the default white. The colour
-    // mirrors `--color-ocean` in assets/tailwind.css; kept as a literal since this
-    // runs before that stylesheet loads.
-    //
-    // The `viewport-fit=cover` meta is inert here: wry/tao's iOS WKWebView does not
-    // honour it, so WebKit insets the layout viewport by the safe area and the map
-    // stops ~34pt short of the physical bottom (the ocean `body` fills that strip).
-    // Not fixable in-app short of a native safe-area override; deferred — see
-    // .scratch/mvp-build/issues/19 for the full disproof.
+// Launch splits on the `mobile` feature, while persistence (`src/store.rs`) splits
+// on `web`: the two are different axes on purpose. `dioxus::mobile::Config` only
+// exists with the mobile feature, so the head injection must key on `mobile`;
+// `localStorage` is browser-only, so the store must key on `web` (a hypothetical
+// desktop build is non-mobile *and* non-web, and correctly gets the plain launch +
+// the filesystem store).
+
+/// Launch on iOS (the ship target and `dx serve --ios` default) with the
+/// mobile-specific head: the ocean `body` background and `viewport-fit=cover`.
+///
+/// Full-bleed presentation: paint the `body` the ocean colour so any exposed
+/// safe-area band reads as dark ocean, not the default white. The colour mirrors
+/// `--color-ocean` in assets/tailwind.css; kept as a literal since this runs
+/// before that stylesheet loads.
+///
+/// The `viewport-fit=cover` meta is inert here: wry/tao's iOS `WKWebView` does not
+/// honour it, so `WebKit` insets the layout viewport by the safe area and the map
+/// stops ~34pt short of the physical bottom (the ocean `body` fills that strip).
+/// Not fixable in-app short of a native safe-area override; deferred — see
+/// .scratch/mvp-build/issues/19 for the full disproof.
+#[cfg(feature = "mobile")]
+fn launch(app: fn() -> Element) {
     let cfg = dioxus::mobile::Config::new().with_custom_head(
         r#"<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>html, body { background-color: #0f1720; }</style>"#
             .to_string(),
     );
-    dioxus::LaunchBuilder::new().with_cfg(cfg).launch(App);
+    dioxus::LaunchBuilder::new().with_cfg(cfg).launch(app);
+}
+
+/// Launch on web (`dx serve --web`, a supported dev target) and any other
+/// non-mobile build. The mobile [`dioxus::mobile::Config`] head is mobile-only, so
+/// this uses the plain launch; the stylesheet paints the ocean ground on web.
+#[cfg(not(feature = "mobile"))]
+fn launch(app: fn() -> Element) {
+    dioxus::launch(app);
 }
 
 /// Resolve the two long-lived handles every screen needs: the Deck (parsed from the

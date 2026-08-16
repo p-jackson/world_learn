@@ -1,26 +1,31 @@
 //! Durable review-state store.
 //!
-//! One sparse serde-JSON file the app reads at launch and rewrites after every
-//! grade. Loading a missing file yields defaults; saving is atomic (temp file in
-//! the same directory → `rename`) so a mid-session quit never corrupts or loses
-//! data. The iOS sandbox path is resolved separately (see [`app_support_dir`]);
-//! the store itself is platform-agnostic and takes a directory, so the
-//! serde/atomic-write logic is unit-testable off-device.
+//! One sparse serde-JSON document the app reads at launch and rewrites after
+//! every grade. Loading a missing document yields defaults. The persistence
+//! backend is platform-split behind the [`Store`] seam so app code stays
+//! backend-agnostic:
+//!
+//! - **Native / iOS** (`not(feature = "web")`): a JSON file in the iOS
+//!   Application Support directory (resolved by the `native` backend's
+//!   `app_support_dir`), written atomically (temp file in the same directory →
+//!   `rename`) so a mid-session quit never corrupts or loses data. The store takes
+//!   a directory, so the serde/atomic-write logic is unit-testable off-device.
+//! - **Web** (`feature = "web"`): the same JSON under a single `localStorage`
+//!   key. Synchronous, so it matches this seam's blocking API without an async
+//!   refactor; a browser has no filesystem sandbox to write.
+//!
+//! The shared serde types ([`ReviewState`] and friends) and the schema constants
+//! are backend-agnostic; only the read/write mechanics differ.
 
-// The app shell now wires `Store` into launch, grading, and Settings, but a few
-// reserved bits of its surface (e.g. `Store::path`, used only in tests) still
-// read as dead code to a plain `cargo build`. Allowed module-wide rather than per
-// item.
-#![expect(
-    dead_code,
-    reason = "a few reserved items (e.g. Store::path) are only used in tests"
-)]
+// `expect` (over `allow`) can't be used here: the reserved surface that reads as
+// dead code differs per backend (native has `Store::path`/`open_in`, only used in
+// tests; web gates those tests out entirely), so no single `expect` is fulfilled
+// across every cfg. `allow` never warns when unfulfilled.
+#![allow(dead_code)]
 
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 
@@ -29,12 +34,6 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 /// Default: new Cards introduced per day.
 pub const DEFAULT_NEW_CARDS_PER_DAY: u32 = 10;
-
-/// File name inside the store directory.
-const STATE_FILE: &str = "review_state.json";
-
-/// Sibling temp file `save` writes before renaming over [`STATE_FILE`].
-const TEMP_FILE: &str = "review_state.json.tmp";
 
 /// The whole persisted document. `cards` is sparse — it holds only
 /// Cards that have left "new"; an absent `ADM0_A3` key is a not-yet-introduced
@@ -92,150 +91,280 @@ impl Default for ReviewState {
     }
 }
 
-/// The durable store: a directory holding [`STATE_FILE`]. Construct with
-/// [`Store::open_default`] on device, or [`Store::open_in`] with an injected
-/// directory in tests.
-///
-/// A `Store` is just a resolved file path, so it is cheap to `Clone` and compares
-/// by that path — [`crate::session::Session`] owns one by value (rather than a
-/// borrow) so it can live in a Dioxus `Signal`, and it is passed as a UI prop.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Store {
-    path: PathBuf,
+/// Reject a document written by a newer, unknown schema rather than silently
+/// mangling it. Shared by both backends' `load` so the version rule has one home.
+fn ensure_supported_schema(state: &ReviewState) -> Result<()> {
+    anyhow::ensure!(
+        state.schema_version <= SCHEMA_VERSION,
+        "unsupported schema version {}; this build supports up to {SCHEMA_VERSION}",
+        state.schema_version
+    );
+    Ok(())
 }
 
-impl Store {
-    /// Open the store in the iOS Application Support directory, creating it on
-    /// first launch.
-    pub fn open_default() -> Result<Self> {
-        Self::open_in(app_support_dir()?)
+// ── Native / iOS backend: a JSON file, written atomically ───────────────────
+#[cfg(not(feature = "web"))]
+pub use native::Store;
+
+#[cfg(not(feature = "web"))]
+mod native {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    use anyhow::{Context, Result};
+
+    use super::{ensure_supported_schema, ReviewState};
+
+    /// File name inside the store directory.
+    const STATE_FILE: &str = "review_state.json";
+
+    /// Sibling temp file `save` writes before renaming over [`STATE_FILE`].
+    pub(super) const TEMP_FILE: &str = "review_state.json.tmp";
+
+    /// The durable store: a directory holding [`STATE_FILE`]. Construct with
+    /// [`Store::open_default`] on device, or [`Store::open_in`] with an injected
+    /// directory in tests.
+    ///
+    /// A `Store` is just a resolved file path, so it is cheap to `Clone` and compares
+    /// by that path — [`crate::session::Session`] owns one by value (rather than a
+    /// borrow) so it can live in a Dioxus `Signal`, and it is passed as a UI prop.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Store {
+        path: PathBuf,
     }
 
-    /// Open the store in `dir`, creating the directory if needed. The seam the
-    /// off-device tests inject a temp directory through.
-    pub fn open_in(dir: impl AsRef<Path>) -> Result<Self> {
-        let dir = dir.as_ref();
-        fs::create_dir_all(dir)
-            .with_context(|| format!("creating store directory {}", dir.display()))?;
-        Ok(Self {
-            path: dir.join(STATE_FILE),
-        })
-    }
+    impl Store {
+        /// Open the store in the iOS Application Support directory, creating it on
+        /// first launch.
+        pub fn open_default() -> Result<Self> {
+            Self::open_in(app_support_dir()?)
+        }
 
-    /// Path of the JSON file this store reads and writes.
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
+        /// Open the store in `dir`, creating the directory if needed. The seam the
+        /// off-device tests inject a temp directory through.
+        pub fn open_in(dir: impl AsRef<Path>) -> Result<Self> {
+            let dir = dir.as_ref();
+            fs::create_dir_all(dir)
+                .with_context(|| format!("creating store directory {}", dir.display()))?;
+            Ok(Self {
+                path: dir.join(STATE_FILE),
+            })
+        }
 
-    /// Load persisted state. A missing file yields [`ReviewState::default`]
-    /// (first launch); a present-but-invalid file is an error, never silently
-    /// discarded.
-    pub fn load(&self) -> Result<ReviewState> {
-        let bytes = match fs::read(&self.path) {
-            Ok(bytes) => bytes,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(ReviewState::default()),
-            Err(e) => {
-                return Err(e)
-                    .with_context(|| format!("reading store file {}", self.path.display()));
+        /// Path of the JSON file this store reads and writes.
+        pub fn path(&self) -> &Path {
+            &self.path
+        }
+
+        /// Load persisted state. A missing file yields [`ReviewState::default`]
+        /// (first launch); a present-but-invalid file is an error, never silently
+        /// discarded.
+        pub fn load(&self) -> Result<ReviewState> {
+            let bytes = match fs::read(&self.path) {
+                Ok(bytes) => bytes,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(ReviewState::default())
+                }
+                Err(e) => {
+                    return Err(e)
+                        .with_context(|| format!("reading store file {}", self.path.display()));
+                }
+            };
+            let state: ReviewState = serde_json::from_slice(&bytes)
+                .with_context(|| format!("parsing store file {}", self.path.display()))?;
+            ensure_supported_schema(&state)?;
+            Ok(state)
+        }
+
+        /// Persist a new value for the daily new-Card cap (the only interactive
+        /// setting), preserving every Card record. Loads the current
+        /// document, replaces the one field, and saves atomically; returns the
+        /// persisted state so the caller can reflect it without a reload.
+        pub fn set_new_cards_per_day(&self, new_cards_per_day: u32) -> Result<ReviewState> {
+            let mut state = self
+                .load()
+                .context("loading store to update new-cards-per-day")?;
+            state.settings.new_cards_per_day = new_cards_per_day;
+            self.save(&state)
+                .context("persisting updated new-cards-per-day")?;
+            Ok(state)
+        }
+
+        /// Erase all persisted state: remove [`STATE_FILE`] so the next
+        /// [`Self::load`] yields [`ReviewState::default`] (the first-launch state).
+        /// A missing file is already clear — not an error.
+        pub fn clear(&self) -> Result<()> {
+            match fs::remove_file(&self.path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => {
+                    Err(e).with_context(|| format!("clearing store file {}", self.path.display()))
+                }
             }
-        };
-        let state: ReviewState = serde_json::from_slice(&bytes)
-            .with_context(|| format!("parsing store file {}", self.path.display()))?;
-        anyhow::ensure!(
-            state.schema_version <= SCHEMA_VERSION,
-            "unsupported schema version {}; this build supports up to {SCHEMA_VERSION}",
-            state.schema_version
-        );
-        Ok(state)
-    }
+        }
 
-    /// Persist a new value for the daily new-Card cap (the only interactive
-    /// setting), preserving every Card record. Loads the current
-    /// document, replaces the one field, and saves atomically; returns the
-    /// persisted state so the caller can reflect it without a reload.
-    pub fn set_new_cards_per_day(&self, new_cards_per_day: u32) -> Result<ReviewState> {
-        let mut state = self
-            .load()
-            .context("loading store to update new-cards-per-day")?;
-        state.settings.new_cards_per_day = new_cards_per_day;
-        self.save(&state)
-            .context("persisting updated new-cards-per-day")?;
-        Ok(state)
-    }
-
-    /// Erase all persisted state: remove [`STATE_FILE`] so the next
-    /// [`Self::load`] yields [`ReviewState::default`] (the first-launch state).
-    /// A missing file is already clear — not an error.
-    pub fn clear(&self) -> Result<()> {
-        match fs::remove_file(&self.path) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => {
-                Err(e).with_context(|| format!("clearing store file {}", self.path.display()))
-            }
+        /// Persist `state` atomically: serialize, write a sibling temp file, then
+        /// `rename` it over the real file. `rename` on the same filesystem is
+        /// atomic, so a crash mid-write leaves the previous file intact.
+        pub fn save(&self, state: &ReviewState) -> Result<()> {
+            let json = serde_json::to_vec_pretty(state).context("serializing review state")?;
+            let tmp = self.path.with_file_name(TEMP_FILE);
+            fs::write(&tmp, &json)
+                .with_context(|| format!("writing temp store file {}", tmp.display()))?;
+            fs::rename(&tmp, &self.path).with_context(|| {
+                format!("renaming {} over {}", tmp.display(), self.path.display())
+            })?;
+            Ok(())
         }
     }
 
-    /// Persist `state` atomically: serialize, write a sibling temp file, then
-    /// `rename` it over the real file. `rename` on the same filesystem is
-    /// atomic, so a crash mid-write leaves the previous file intact.
-    pub fn save(&self, state: &ReviewState) -> Result<()> {
-        let json = serde_json::to_vec_pretty(state).context("serializing review state")?;
-        let tmp = self.path.with_file_name(TEMP_FILE);
-        fs::write(&tmp, &json)
-            .with_context(|| format!("writing temp store file {}", tmp.display()))?;
-        fs::rename(&tmp, &self.path)
-            .with_context(|| format!("renaming {} over {}", tmp.display(), self.path.display()))?;
-        Ok(())
+    /// Resolve the iOS Application Support directory for this app, creating it on
+    /// first launch.
+    ///
+    /// This is the one unavoidable platform-specific piece: the `dirs` /
+    /// `directories` / `dioxus-sdk` crates resolve iOS wrong (they fall back to
+    /// Linux/XDG), so we call `NSSearchPathForDirectoriesInDomains` directly.
+    /// Application Support (app-managed, backed up, hidden) — not Caches (purgeable)
+    /// — holds review history.
+    #[cfg(target_vendor = "apple")]
+    pub fn app_support_dir() -> Result<PathBuf> {
+        use objc2_foundation::{
+            NSSearchPathDirectory, NSSearchPathDomainMask, NSSearchPathForDirectoriesInDomains,
+        };
+
+        let paths = NSSearchPathForDirectoriesInDomains(
+            NSSearchPathDirectory::ApplicationSupportDirectory,
+            NSSearchPathDomainMask::UserDomainMask,
+            true,
+        );
+        let base = paths
+            .firstObject()
+            .context("no Application Support directory in the user domain search path")?;
+        let dir = PathBuf::from(base.to_string()).join(APP_SUBDIR);
+        fs::create_dir_all(&dir)
+            .with_context(|| format!("creating app support directory {}", dir.display()))?;
+        Ok(dir)
+    }
+
+    /// Non-Apple builds (host CI, `cargo test` on Linux) have no iOS sandbox. The
+    /// store's serde/atomic-write logic is exercised through [`Store::open_in`]
+    /// with an injected directory, so this only needs to keep the crate compiling.
+    #[cfg(not(target_vendor = "apple"))]
+    pub fn app_support_dir() -> Result<PathBuf> {
+        anyhow::bail!("Application Support directory is only resolvable on Apple platforms")
+    }
+
+    /// App-owned subdirectory under Application Support.
+    #[cfg(target_vendor = "apple")]
+    const APP_SUBDIR: &str = "WorldLearn";
+}
+
+// ── Web backend: the same JSON under a single `localStorage` key ─────────────
+#[cfg(feature = "web")]
+pub use web::Store;
+
+#[cfg(feature = "web")]
+mod web {
+    use anyhow::{Context, Result};
+
+    use super::{ensure_supported_schema, ReviewState};
+
+    /// The single `localStorage` key holding the serialized [`ReviewState`].
+    /// Stable and documented so browser-driven tests (issue 25) can seed state by
+    /// writing this key directly, then reloading.
+    const STORAGE_KEY: &str = "world_learn.review_state";
+
+    /// The durable store on web: the browser's `localStorage`. There is no path or
+    /// handle to hold — `localStorage` is a per-origin singleton — so `Store` is a
+    /// zero-sized token kept for API parity with the native backend (it is `Clone`,
+    /// lives in a `Signal`, and is passed as a UI prop just the same).
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Store;
+
+    /// The origin's `localStorage`, or an error if unavailable (no window, or a
+    /// browser that blocks storage, e.g. some private-mode configurations).
+    fn local_storage() -> Result<web_sys::Storage> {
+        web_sys::window()
+            .context("no browser window; localStorage is unavailable")?
+            .local_storage()
+            .map_err(|e| anyhow::anyhow!("accessing localStorage: {e:?}"))?
+            .context("localStorage is unavailable in this browser context")
+    }
+
+    // `self` is unread and `open_default` never fails, but both mirror the native
+    // backend's fallible, `&self` signatures so app code (`Session`, Settings,
+    // `app_setup`) is identical across backends. Parity is the point, not an
+    // oversight.
+    #[allow(
+        clippy::unused_self,
+        clippy::unnecessary_wraps,
+        clippy::missing_const_for_fn
+    )]
+    impl Store {
+        /// Open the store backed by the origin's `localStorage`. Infallible today,
+        /// but returns `Result` to match the native backend's [`super::native`]
+        /// signature so [`crate::app_setup`] stays backend-agnostic.
+        pub fn open_default() -> Result<Self> {
+            Ok(Self)
+        }
+
+        /// Load persisted state. An absent key yields [`ReviewState::default`]
+        /// (first launch); a present-but-invalid value is an error, never silently
+        /// discarded — mirroring the native backend.
+        pub fn load(&self) -> Result<ReviewState> {
+            let storage = local_storage()?;
+            let Some(json) = storage
+                .get_item(STORAGE_KEY)
+                .map_err(|e| anyhow::anyhow!("reading localStorage key {STORAGE_KEY}: {e:?}"))?
+            else {
+                return Ok(ReviewState::default());
+            };
+            let state: ReviewState =
+                serde_json::from_str(&json).context("parsing localStorage review state")?;
+            ensure_supported_schema(&state)?;
+            Ok(state)
+        }
+
+        /// Persist a new value for the daily new-Card cap, preserving every Card
+        /// record. Loads, replaces the one field, saves; returns the persisted
+        /// state so the caller can reflect it without a reload.
+        pub fn set_new_cards_per_day(&self, new_cards_per_day: u32) -> Result<ReviewState> {
+            let mut state = self
+                .load()
+                .context("loading store to update new-cards-per-day")?;
+            state.settings.new_cards_per_day = new_cards_per_day;
+            self.save(&state)
+                .context("persisting updated new-cards-per-day")?;
+            Ok(state)
+        }
+
+        /// Erase all persisted state: remove the key so the next [`Self::load`]
+        /// yields [`ReviewState::default`]. A missing key is already clear.
+        pub fn clear(&self) -> Result<()> {
+            local_storage()?
+                .remove_item(STORAGE_KEY)
+                .map_err(|e| anyhow::anyhow!("clearing localStorage key {STORAGE_KEY}: {e:?}"))
+        }
+
+        /// Persist `state` as pretty JSON under [`STORAGE_KEY`]. `localStorage`
+        /// writes are atomic per key, so there is no temp-file dance to mirror.
+        pub fn save(&self, state: &ReviewState) -> Result<()> {
+            let json = serde_json::to_string_pretty(state).context("serializing review state")?;
+            local_storage()?
+                .set_item(STORAGE_KEY, &json)
+                .map_err(|e| anyhow::anyhow!("writing localStorage key {STORAGE_KEY}: {e:?}"))
+        }
     }
 }
 
-/// Resolve the iOS Application Support directory for this app, creating it on
-/// first launch.
-///
-/// This is the one unavoidable platform-specific piece: the `dirs` /
-/// `directories` / `dioxus-sdk` crates resolve iOS wrong (they fall back to
-/// Linux/XDG), so we call `NSSearchPathForDirectoriesInDomains` directly.
-/// Application Support (app-managed, backed up, hidden) — not Caches (purgeable)
-/// — holds review history.
-#[cfg(target_vendor = "apple")]
-pub fn app_support_dir() -> Result<PathBuf> {
-    use objc2_foundation::{
-        NSSearchPathDirectory, NSSearchPathDomainMask, NSSearchPathForDirectoriesInDomains,
-    };
-
-    let paths = NSSearchPathForDirectoriesInDomains(
-        NSSearchPathDirectory::ApplicationSupportDirectory,
-        NSSearchPathDomainMask::UserDomainMask,
-        true,
-    );
-    let base = paths
-        .firstObject()
-        .context("no Application Support directory in the user domain search path")?;
-    let dir = PathBuf::from(base.to_string()).join(APP_SUBDIR);
-    fs::create_dir_all(&dir)
-        .with_context(|| format!("creating app support directory {}", dir.display()))?;
-    Ok(dir)
-}
-
-/// Non-Apple builds (host CI, `cargo test` on Linux) have no iOS sandbox. The
-/// store's serde/atomic-write logic is exercised through [`Store::open_in`]
-/// with an injected directory, so this only needs to keep the crate compiling.
-#[cfg(not(target_vendor = "apple"))]
-pub fn app_support_dir() -> Result<PathBuf> {
-    anyhow::bail!("Application Support directory is only resolvable on Apple platforms")
-}
-
-/// App-owned subdirectory under Application Support.
-#[cfg(target_vendor = "apple")]
-const APP_SUBDIR: &str = "WorldLearn";
-
-#[cfg(test)]
+#[cfg(all(test, not(feature = "web")))]
 mod tests {
+    use super::native::TEMP_FILE;
     use super::*;
     use jiff::civil::date;
+    use std::fs;
 
-    fn sample_card() -> CardRecord {
+    const fn sample_card() -> CardRecord {
         CardRecord {
             stability: 3.17,
             difficulty: 5.20,

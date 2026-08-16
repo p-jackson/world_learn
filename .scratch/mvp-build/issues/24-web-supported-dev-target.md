@@ -1,6 +1,34 @@
 # 24 — Make web an officially supported dev target
 
-Status: needs-triage
+Status: done
+
+## Decision: `localStorage` backend (not ephemeral)
+
+Chose the real-persistence `localStorage` backend over ephemeral in-memory. Two
+reasons pushed past the issue's "start ephemeral" default:
+
+- **It's synchronous.** `localStorage` matches the existing blocking `Store` API
+  (`load`/`save`/`clear`) with no async refactor — the exact thing IndexedDB would
+  have forced. The web `Store` is a zero-sized token; app code is unchanged.
+- **Issue 25 seeding is trivial.** Playwright seeds a known state by writing one
+  key and reloading — no in-app injection hook (`window.__wl_seed` / `?seed=`)
+  needed. Per issue 25 that was the preferred path if simpler; it is, so this
+  tips the decision here as anticipated.
+
+The split lives behind the `Store` seam in `src/store.rs`: `#[cfg(feature =
+"web")]` selects the `localStorage` backend, `not(feature = "web")` the filesystem
+one. The persisted JSON is byte-identical across backends. Key:
+`world_learn.review_state`. No follow-up for web persistence is needed — this *is*
+real persistence.
+
+Two wasm-only runtime deps surfaced (both would panic/fail to link, not fail to
+compile the host check — the `dx serve --web` smoke caught the jiff one):
+`getrandom` needs its `wasm_js` backend (`fsrs → rand`), and `jiff` needs its `js`
+feature for `Zoned::now()`. Wired in `Cargo.toml` +`.cargo/config.toml`.
+
+Verified live: `dx serve --web` → Home renders (0 due / 10 new) → Start → reveal
+(China) → grade Good → queue advances 1/10→2/10 and `localStorage` holds the CHN
+FSRS record.
 
 **Goal:** `dx serve --web` is a first-class, documented way to run the app in
 development. iOS (`dx serve --ios`) **stays the default and only ship target** —
@@ -59,12 +87,15 @@ backend-agnostic.
 
 ## Acceptance
 
-- [ ] `dx serve --web` builds and serves; app renders, a review can be started
-      and graded in the browser.
-- [ ] Web persistence decision made and implemented behind the `Store` seam
-      (ephemeral or localStorage/IndexedDB), documented in the issue.
-- [ ] `objc2` / Apple-only code excluded from the web build; assets resolve.
-- [ ] AGENTS.md "Launching application" documents `dx serve --web` as a
+- [x] `dx serve --web` builds and serves; app renders, a review can be started
+      and graded in the browser. (Verified live via Playwright.)
+- [x] Web persistence decision made and implemented behind the `Store` seam
+      (`localStorage`), documented in the issue.
+- [x] `objc2` / Apple-only code excluded from the web build (`cargo tree` on the
+      wasm target confirms); assets resolve (favicon + tailwind copied,
+      `geometry.json` embedded via `include_str!`).
+- [x] AGENTS.md "Launching application" documents `dx serve --web` as a
       supported dev target, iOS still the default.
-- [ ] Gate green for both targets: existing iOS/host gate **plus** `cargo clippy
-      --no-default-features --features web --all-targets -- -D warnings`.
+- [x] Gate green for both targets: existing iOS/host gate **plus** `cargo clippy
+      --no-default-features --features web --all-targets -- -D warnings` and a
+      `wasm32-unknown-unknown` check. Both added to `.github/workflows/rust.yml`.

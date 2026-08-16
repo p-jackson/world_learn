@@ -252,7 +252,7 @@ impl Session {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "web")))]
 mod tests {
     use super::*;
     use crate::store::{CardRecord, Settings};
@@ -288,7 +288,7 @@ mod tests {
             .collect()
     }
 
-    fn record(due: Date, last_review: Date, introduced_on: Date) -> CardRecord {
+    const fn record(due: Date, last_review: Date, introduced_on: Date) -> CardRecord {
         CardRecord {
             stability: 5.0,
             difficulty: 5.0,
@@ -298,7 +298,10 @@ mod tests {
         }
     }
 
-    fn state_with(new_cards_per_day: u32, cards: BTreeMap<String, CardRecord>) -> ReviewState {
+    const fn state_with(
+        new_cards_per_day: u32,
+        cards: BTreeMap<String, CardRecord>,
+    ) -> ReviewState {
         ReviewState {
             schema_version: crate::store::SCHEMA_VERSION,
             settings: Settings { new_cards_per_day },

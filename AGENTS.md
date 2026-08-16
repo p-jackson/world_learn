@@ -1,8 +1,25 @@
 # Launching application
 
+iOS is the default and only **ship** target:
+
 ```sh
 dx serve --ios
 ```
+
+Web is a supported **dev/test** target — the browser-driven test surface, not a
+product target:
+
+```sh
+dx serve --web   # serves on http://localhost:8080
+```
+
+The `web` feature swaps the persistence backend behind the `Store` seam: native/
+iOS write a JSON file under Application Support; web writes the same JSON under the
+`world_learn.review_state` `localStorage` key (see `src/store.rs`). App code is
+backend-agnostic. Two transitive deps (`getrandom`, `jiff`) need browser backends
+on wasm — wired in `Cargo.toml`'s `[target.wasm32-unknown-unknown.dependencies]`
+and `.cargo/config.toml`; don't remove either or `dx serve --web` stops linking/
+running.
 
 # Error handling
 
@@ -55,8 +72,23 @@ CI runs these same commands, so a red run locally is a red run in CI.
 
   Host is Apple (`target_vendor = "apple"`), so this compiles the iOS-only
   `objc2` path too. Touched anything platform-specific? Also confirm the ship
-  target builds: `cargo check --target aarch64-apple-ios`. CI:
-  `.github/workflows/rust.yml`.
+  target builds: `cargo check --target aarch64-apple-ios`.
+
+  The `web` feature is a maintained dev target, so the same change must also pass
+  the web gate — the `web` feature disables the default `mobile` feature, so this
+  compiles the `localStorage` backend and the non-mobile launch path instead:
+
+  ```sh
+  cargo clippy --no-default-features --features web --all-targets -- -D warnings
+  cargo check --no-default-features --features web --target wasm32-unknown-unknown
+  ```
+
+  The clippy line is the cheap host lint gate; the `wasm32` check is the real web
+  target — it's the one that proves `objc2` is excluded and the wasm-only deps
+  resolve. Neither runs the app, so a change to launch, persistence, or anything
+  that calls the clock/RNG on web still wants a manual `dx serve --web` smoke
+  (start a review, grade a card — the flow panics at runtime, not compile time, if
+  a wasm backend dep is missing). CI: `.github/workflows/rust.yml`.
 
 - **Geometry pipeline** — any change under `tools/geometry/**` or to
   `assets/geometry.json`:

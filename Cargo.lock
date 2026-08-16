@@ -2692,10 +2692,12 @@ dependencies = [
  "jiff-core",
  "jiff-static",
  "jiff-tzdb-platform",
+ "js-sys",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+ "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 
@@ -6474,12 +6476,14 @@ dependencies = [
  "anyhow",
  "dioxus",
  "fsrs",
+ "getrandom 0.4.3",
  "jiff",
  "objc2",
  "objc2-foundation",
  "serde",
  "serde_json",
  "tempfile",
+ "web-sys",
 ]
 
 [[package]]

@@ -10,12 +10,14 @@ on:
       - 'src/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - '.cargo/config.toml'
       - '.github/workflows/rust.yml'
   pull_request:
     paths:
       - 'src/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - '.cargo/config.toml'
       - '.github/workflows/rust.yml'
 
 jobs:
@@ -26,10 +28,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-          targets: aarch64-apple-ios
+          targets: aarch64-apple-ios, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       # The app ships to iOS only; make sure the ship target still compiles.
       - run: cargo check --target aarch64-apple-ios
+      # Web is a maintained dev target (issue 24): lint the localStorage backend
+      # and non-mobile launch path, then compile the real wasm target — the one
+      # that proves objc2 is excluded and the wasm-only deps resolve.
+      - run: cargo clippy --no-default-features --features web --all-targets -- -D warnings
+      - run: cargo check --no-default-features --features web --target wasm32-unknown-unknown
