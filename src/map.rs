@@ -55,9 +55,16 @@ const CONTEXT_MARGIN_DEG: f64 = 10.6;
 /// centres so the transform never collapses the map to a vertical line. No
 /// inhabited Entity's mainland reaches it.
 const MIN_COS_SCALE: f64 = 0.1;
-/// Reveal-pin glyph size as a fraction of the framed window's span. `slice`
-/// scales the square `viewBox` uniformly in x and y regardless of crop, so a
-/// span-relative size keeps the pin's apparent size roughly constant across Cards.
+/// Target width÷height of the Review viewport — a portrait phone. The framing
+/// [`span`](Frame::span) sizes the `viewBox` width; its height is `span /
+/// VIEWPORT_ASPECT` so the window matches the screen's shape and the map fills it
+/// edge-to-edge under `meet` with no letterbox band. `meet` never crops, so on a
+/// device whose aspect differs the only effect is a thin ocean band on one axis —
+/// the framed entity is always shown whole. ≈ a modern iPhone (9:19.5).
+const VIEWPORT_ASPECT: f64 = 0.46;
+/// Reveal-pin glyph size as a fraction of the framed window's span. `meet` scales
+/// the `viewBox` uniformly in x and y, so a span-relative size keeps the pin's
+/// apparent size roughly constant across Cards.
 const PIN_SIZE_FRACTION: f64 = 0.06;
 
 /// The world is drawn three times — the map proper plus a wrap copy `∓360°`
@@ -68,7 +75,7 @@ const PIN_SIZE_FRACTION: f64 = 0.06;
 /// other two sit outside the `viewBox` at no visible cost.
 const WRAP_COPIES: [(&str, f64); 3] = [("wrap-w", -360.0), ("wrap-main", 0.0), ("wrap-e", 360.0)];
 
-/// The regional-zoom framing for one Entity: a square `viewBox` plus a horizontal
+/// The regional-zoom framing for one Entity: a portrait `viewBox` plus a horizontal
 /// cos(lat) correction, both derived from the Entity's **framing** bbox — the
 /// asset's `bbox`, its mainland (or an archipelago's major islands), so France
 /// frames on the European mainland, not out across the Atlantic to French Guiana.
@@ -85,7 +92,8 @@ pub struct Frame {
     center_x: f64,
     /// Frame-centre y (projected −latitude).
     center_y: f64,
-    /// Side of the square window, in projected degrees.
+    /// Width of the framed window, in projected degrees; the height is
+    /// `span / VIEWPORT_ASPECT`.
     span: f64,
     /// Horizontal scale = cos(frame-centre latitude): undoes the equirectangular
     /// high-latitude horizontal stretch, applied about the frame centre.
@@ -95,12 +103,13 @@ pub struct Frame {
 impl Frame {
     /// Frame the mainland `bbox` = `[minx, miny, maxx, maxy]` (projected coords).
     ///
-    /// The window is square and framed around the bbox with a fixed [context
-    /// margin](CONTEXT_MARGIN_DEG) on each side. The longitude extent is
-    /// compressed by cos(lat) before choosing the square side, so the window
-    /// frames the region's real-world footprint (the same correction the group
-    /// transform then applies to the geometry) rather than its
-    /// equirectangular-stretched one.
+    /// The [`span`](Self::span) is the larger of the bbox's two sides plus a fixed
+    /// [context margin](CONTEXT_MARGIN_DEG) on each side; it sets the `viewBox`
+    /// width, with the height derived as `span / VIEWPORT_ASPECT` so the window is
+    /// portrait like the screen ([`Self::view_box`]). The longitude extent is
+    /// compressed by cos(lat) before choosing the span, so the window frames the
+    /// region's real-world footprint (the same correction the group transform then
+    /// applies to the geometry) rather than its equirectangular-stretched one.
     pub fn for_bbox(bbox: [f64; 4]) -> Self {
         let [min_x, min_y, max_x, max_y] = bbox;
         let center_x = f64::midpoint(min_x, max_x);
@@ -118,15 +127,17 @@ impl Frame {
         }
     }
 
-    /// The square `viewBox` string `min-x min-y span span`, centred on the mainland.
+    /// The portrait `viewBox` string `min-x min-y span height`, centred on the
+    /// framing bbox. Width is the [`span`](Self::span); height is `span /
+    /// VIEWPORT_ASPECT` so the window matches the screen and fills it under `meet`.
     pub fn view_box(&self) -> String {
-        let half = self.span / 2.0;
+        let height = self.span / VIEWPORT_ASPECT;
         format!(
             "{} {} {} {}",
-            svg_num(self.center_x - half),
-            svg_num(self.center_y - half),
+            svg_num(self.center_x - self.span / 2.0),
+            svg_num(self.center_y - height / 2.0),
             svg_num(self.span),
-            svg_num(self.span),
+            svg_num(height),
         )
     }
 
@@ -254,7 +265,7 @@ pub fn WorldMap(
                 [&_path]:stroke-land-edge [&_path]:stroke-1 \
                 [&_path]:[vector-effect:non-scaling-stroke] [&_path]:[stroke-linejoin:round]",
             view_box: "{view_box}",
-            preserve_aspect_ratio: "xMidYMid slice",
+            preserve_aspect_ratio: "xMidYMid meet",
             for (key, shift) in WRAP_COPIES {
                 g {
                     key: "{key}",
@@ -314,30 +325,38 @@ mod tests {
         assert!((a - b).abs() < 1e-6, "{a} != {b}");
     }
 
+    /// Assert equality within `svg_num`'s 3-decimal rounding — for quantities read
+    /// back from a `viewBox` string, whose values are rounded on the way out.
+    fn approx_svg(a: f64, b: f64) {
+        assert!((a - b).abs() < 5e-4, "{a} != {b}");
+    }
+
     /// The [`Frame`] for a real-deck Entity by code.
     fn frame_for(deck: &Deck, code: &str) -> Frame {
         Frame::for_bbox(deck.get(code).unwrap().entity.bbox)
     }
 
     #[test]
-    fn frame_centres_a_square_window_on_the_bbox() {
+    fn frame_centres_a_portrait_window_on_the_bbox() {
         // Symmetric bbox on the equator (lat 0 → no cos correction): the window is
-        // centred and square, the larger dimension plus a context margin each side.
+        // centred, its width the larger dimension plus a context margin each side,
+        // its height that width scaled up to the portrait viewport aspect.
         let frame = Frame::for_bbox([-5.0, -5.0, 5.0, 5.0]);
         let [min_x, min_y, width, height] = parse_view_box(&frame.view_box());
         approx(width, 10.0 + MARGINS); // 10° span + margins
-        approx(height, 10.0 + MARGINS);
+        approx_svg(height, (10.0 + MARGINS) / VIEWPORT_ASPECT);
         approx(min_x + width / 2.0, 0.0); // centred on the bbox
         approx(min_y + height / 2.0, 0.0);
     }
 
     #[test]
-    fn frame_stays_square_for_a_wide_bbox() {
-        // A wide, short mainland still frames square, sized off the larger side.
+    fn frame_sizes_width_off_the_larger_side() {
+        // A wide, short mainland: the viewBox width is sized off the larger (60°)
+        // side plus margins, and the height is that width at the portrait aspect.
         let frame = Frame::for_bbox([-30.0, -2.0, 30.0, 2.0]);
         let [_, _, w, h] = parse_view_box(&frame.view_box());
-        approx(w, h); // viewBox width equals height
         approx(w, 60.0 + MARGINS); // sized off the 60° width
+        approx_svg(h, w / VIEWPORT_ASPECT); // taller, matching the screen
     }
 
     #[test]
@@ -363,7 +382,7 @@ mod tests {
         let frame = Frame::for_bbox([166.93, 0.52, 166.93, 0.52]);
         let [_, _, w, h] = parse_view_box(&frame.view_box());
         approx(w, MARGINS);
-        approx(h, MARGINS);
+        approx_svg(h, MARGINS / VIEWPORT_ASPECT);
     }
 
     #[test]
