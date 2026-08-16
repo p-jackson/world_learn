@@ -163,6 +163,19 @@ impl Store {
         Ok(state)
     }
 
+    /// Erase all persisted state: remove [`STATE_FILE`] so the next
+    /// [`Self::load`] yields [`ReviewState::default`] (the first-launch state).
+    /// A missing file is already clear — not an error.
+    pub fn clear(&self) -> Result<()> {
+        match fs::remove_file(&self.path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => {
+                Err(e).with_context(|| format!("clearing store file {}", self.path.display()))
+            }
+        }
+    }
+
     /// Persist `state` atomically: serialize, write a sibling temp file, then
     /// `rename` it over the real file. `rename` on the same filesystem is
     /// atomic, so a crash mid-write leaves the previous file intact.
@@ -344,6 +357,23 @@ mod tests {
         assert_eq!(reloaded.cards.len(), 2);
         assert!(reloaded.cards.contains_key("USA"));
         assert!(reloaded.cards.contains_key("DEU"));
+    }
+
+    #[test]
+    fn clear_removes_state_and_reloads_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open_in(dir.path()).unwrap();
+        let mut state = ReviewState::default();
+        state.settings.new_cards_per_day = 25;
+        state.cards.insert("FRA".to_string(), sample_card());
+        store.save(&state).unwrap();
+
+        store.clear().unwrap();
+
+        assert!(!store.path().exists(), "clear removes the state file");
+        // A missing file is not an error to clear again, and reloads as defaults.
+        store.clear().unwrap();
+        assert_eq!(store.load().unwrap(), ReviewState::default());
     }
 
     #[test]

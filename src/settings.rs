@@ -39,10 +39,29 @@ pub fn Settings() -> Element {
     // the UI responsive; the on-screen number always reflects the intent.
     // `Clone` (the Store is cheap to clone, the Signal is Copy) so each stepper
     // button gets its own handle.
-    let commit = move |n: u32| {
-        value.set(n);
-        if let Err(e) = store.set_new_cards_per_day(n) {
-            error!("{e:#}");
+    let commit = {
+        let store = store.clone();
+        move |n: u32| {
+            value.set(n);
+            if let Err(e) = store.set_new_cards_per_day(n) {
+                error!("{e:#}");
+            }
+        }
+    };
+
+    // Destructive: erase all review history and settings. Guarded by a two-tap
+    // confirm (the first tap arms it) so a stray tap can't wipe progress. On
+    // clear, snap the stepper back to the default the fresh store will report.
+    let mut confirm_clear = use_signal(|| false);
+    let clear_memory = move |_| {
+        if confirm_clear() {
+            if let Err(e) = store.clear() {
+                error!("{e:#}");
+            }
+            value.set(DEFAULT_NEW_CARDS_PER_DAY);
+            confirm_clear.set(false);
+        } else {
+            confirm_clear.set(true);
         }
     };
 
@@ -91,6 +110,17 @@ pub fn Settings() -> Element {
                 ReadonlyRow { label: "Scheduler", value: "FSRS".to_string() }
                 div { class: "mx-5 h-px bg-line" }
                 ReadonlyRow { label: "Deck", value: "{deck_len}, incl. contested" }
+            }
+
+            // Destructive: erase all review history and settings.
+            button {
+                class: "mt-8 rounded-2xl bg-panel px-5 py-4 text-left text-[16px] font-[600] text-danger",
+                onclick: clear_memory,
+                if confirm_clear() {
+                    "Tap again to erase all progress"
+                } else {
+                    "Clear all memory"
+                }
             }
         }
     }
