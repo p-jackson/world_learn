@@ -1,6 +1,6 @@
 # 23 — Error reporting to Sentry (free tier)
 
-Status: needs-triage
+Status: done
 
 **Goal:** ship app errors to a Sentry dashboard so failures in the wild are
 visible, without changing how the app renders failures to the user.
@@ -54,10 +54,14 @@ combined with `sentry-tracing`. Pick one report site.
 
 ## Acceptance
 
-- [ ] `sentry-tracing` (or equivalent) forwards `error!` events to a Sentry
-      project; verified an error shows up in the dashboard.
-- [ ] iOS target builds with the Sentry transport (`cargo check --target
-      aarch64-apple-ios`).
-- [ ] DSN is configured out of source (env / build config), not committed.
-- [ ] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
-      `cargo fmt --check`.
+- [x] Boundary `error!` failures forward to Sentry — via
+      `observability::report` → `capture_anyhow` (structured exception frames,
+      not the flat `{e:#}` string); `sentry-tracing` demoted to breadcrumbs so
+      `capture_anyhow` is the sole event site. Verified: a two-level chain
+      delivered to the dashboard (flush confirmed).
+- [x] iOS target builds with the Sentry transport — `reqwest` + `rustls` (not
+      `native-tls`); `cargo check --target aarch64-apple-ios` green.
+- [x] DSN configured out of source — embedded at build time from the
+      `SENTRY_DSN` env var or a gitignored `.env` (`build.rs`); not committed.
+- [x] Gate green: `cargo test`, `cargo clippy --all-targets -- -D warnings`,
+      `cargo fmt --check`, plus the web gates.
