@@ -2,6 +2,7 @@
   "name": "world-learn-e2e",
   "version": "0.0.0",
   "private": true,
+  "license": "GPL-2.0-only",
   "description": "Playwright end-to-end suite driving the web dev target (dx serve --web).",
   "scripts": {
     "test": "playwright test",

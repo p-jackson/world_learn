@@ -2,6 +2,7 @@
   "name": "world-learn-geometry",
   "version": "0.0.0",
   "private": true,
+  "license": "GPL-2.0-only",
   "type": "module",
   "description": "Dev-only build step: Natural Earth admin-0 -> static geometry asset (assets/geometry.json). Never ships in the app.",
   "scripts": {
