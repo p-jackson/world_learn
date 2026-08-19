@@ -5,3 +5,12 @@
 # untouched.
 [target.wasm32-unknown-unknown]
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
+
+# rustc defaults the iOS deployment target to 10.0, but C deps (aws-lc-sys, via
+# rustls) compile their objects against the SDK default (26.x) and reference
+# symbols like `___chkstk_darwin` that iOS 10's libSystem doesn't export — the
+# link then fails with "symbol(s) not found for architecture arm64". Pin one
+# modern target so rustc's link and cc's compiles agree. Apple-only var; wasm
+# and host builds ignore it.
+[env]
+IPHONEOS_DEPLOYMENT_TARGET = "16.0"
