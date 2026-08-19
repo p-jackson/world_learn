@@ -13,3 +13,7 @@
 /tmp
 
 .env
+
+# Local AI agent tooling (skills/workflows), not part of the app
+/.agents
+/.claude

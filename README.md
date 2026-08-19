@@ -70,3 +70,22 @@ CI runs the same `npm test` on every push/PR that touches those paths (see
 `.github/workflows/geometry.yml`). If you regenerate the asset, run
 `npm run build` and commit the updated `assets/geometry.json` so the invariants
 match. See `tools/geometry/README.md` for details.
+
+### End-to-end (browser) tests
+
+The web target (`dx serve --web`) is a dev/test surface, not a product target —
+it exists so the UI can be driven in a headless browser. Playwright specs in
+`tests/e2e/**` seed the store and drive the app end to end. Run them before
+committing any change that alters what the app renders (`src/**`, `assets/**`,
+the manifests above, or the suite itself):
+
+```bash
+cd tests/e2e
+npm ci                                   # first time: also npx playwright install chromium
+npm run typecheck                        # tsc over the suite
+npm test                                 # Playwright, headless
+```
+
+`npm test` starts `dx serve --web` itself and drives it in headless Chromium. CI
+runs the same suite on every push/PR touching those paths (see
+`.github/workflows/e2e.yml`).
